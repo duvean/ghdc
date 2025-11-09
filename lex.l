@@ -326,7 +326,6 @@ bool custom_indents_in_block_flag = false; // флаг пропуска блок
   b       { string_buffer += '\b'; BEGIN(is_char_escape ? CHAR : STRING); }
   f       { string_buffer += '\f'; BEGIN(is_char_escape ? CHAR : STRING); }
   v       { string_buffer += '\v'; BEGIN(is_char_escape ? CHAR : STRING); }
-  &       { string_buffer += '\&'; BEGIN(is_char_escape ? CHAR : STRING); }
   0       { string_buffer += '\0'; BEGIN(is_char_escape ? CHAR : STRING); }
   '       { string_buffer += '\''; BEGIN(is_char_escape ? CHAR : STRING); }
   \"      { string_buffer += '\"'; BEGIN(is_char_escape ? CHAR : STRING); }
@@ -510,7 +509,7 @@ int get_next_token(void) {
     int flex_result = yylex(); 
     #define yylex get_next_token 
     
-    printf("Parser calls original yylex, returned %d\n", flex_result);
+    printf("\nParser calls original yylex, returned %d\n", flex_result);
     
     if(flex_result == 0) {
         if (token_queue.empty()) {

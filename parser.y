@@ -20,6 +20,7 @@ void yyerror(const char *s);
 %union {
     ProgramNode* program;
     DeclNode* decl;
+    DeclListNode* decl_list;
     ExprNode* expr;
     char* str;
     int intVal;
@@ -28,13 +29,14 @@ void yyerror(const char *s);
 }
 
 %type <program> program
-%type <decl> decl func_signature func_definition var_decl data_decl decl_list decl_list_opt
-%type <decl> opt_where decl_block constr_list var_decl_block param_list
+%type <decl> decl func_signature func_definition var_decl data_decl binding
+%type <decl_list> decl_list decl_list_opt binding_list binding_list_opt
+%type <decl_list> opt_where decl_block constr_list param_list
 %type <expr> expr expr_list expr_list_opt expr_list_tail
 %type <expr> type_expr
 %type <expr> case_branch_list_opt case_branch_list case_branch
 %type <expr> do_block do_stmt_list do_stmt
-
+%type <expr> pattern pattern_list
 
 /* ==== Терминалы ==== */
 %token KW_LET KW_WHERE KW_DO KW_OF KW_IN KW_CASE KW_IF KW_THEN KW_ELSE
@@ -42,13 +44,14 @@ void yyerror(const char *s);
 %token KW_TRUE KW_FALSE
 %token <str> ID ID_CAP
 %token <str> DEC_LITERAL HEX_LITERAL OCT_LITERAL FLOAT
+%token <strVal> CHAR_LITERAL STRING_LITERAL
 %token RIGHT_ARROW LEFT_ARROW FAT_ARROW DOUBLE_COLON
 %token EQUALS PIPE COLON COMMA SEMICOLON BACKSLASH
 %token LEFT_PAREN RIGHT_PAREN LEFT_BRACKET RIGHT_BRACKET LEFT_BRACE RIGHT_BRACE
 %token PLUS MINUS ASTERISK SLASH CARET DOUBLE_ASTERISK DOUBLE_CARET
 %token LESS GREATER LESS_EQUAL GREATER_EQUAL DOUBLE_EQUALS NOT_EQUALS
 %token DOUBLE_AMPERSAND DOUBLE_PIPE DOLLAR DOT
-%token SINGLELINE_COMMENT DOUBLE_PLUS DOUBLE_DOT DOUBLE_BANG DOT_AMPERSAND_DOT DOT_PIPE_DOT DOUBLE_GREATER_EQUAL DOUBLE_GREATER EQUAL_DOUBLE_LESS AT_SIGN TILDE BANG PERCENT KW_DEFAULT KW_CLASS KW_INSTANCE KW_DERIVING KW_IMPORT KW_MODULE KW_FOREIGN KW_INFIX KW_INFIXR KW_AS KW_HIDING KW_QUALIFIED KW_NEWTYPE KW_EXPORT KW_CCALL KW_PRINT KW_GETLINE KW_INT KW_INTEGER KW_CHAR KW_STRING KW_FLOAT KW_BOOL BACKTICK KW_INFIXL AMPERSAND OPERATOR CHAR_LITERAL STRING_LITERAL LBRACE RBRACE
+%token SINGLELINE_COMMENT DOUBLE_PLUS DOUBLE_DOT DOUBLE_BANG DOT_AMPERSAND_DOT DOT_PIPE_DOT DOUBLE_GREATER_EQUAL DOUBLE_GREATER EQUAL_DOUBLE_LESS AT_SIGN TILDE BANG PERCENT KW_DEFAULT KW_CLASS KW_INSTANCE KW_DERIVING KW_IMPORT KW_MODULE KW_FOREIGN KW_INFIX KW_INFIXR KW_AS KW_HIDING KW_QUALIFIED KW_NEWTYPE KW_EXPORT KW_CCALL KW_PRINT KW_GETLINE KW_INT KW_INTEGER KW_CHAR KW_STRING KW_FLOAT KW_BOOL BACKTICK KW_INFIXL AMPERSAND OPERATOR LBRACE RBRACE
 
 /* ==== Приоритеты ==== */
 %left DOT
@@ -58,6 +61,7 @@ void yyerror(const char *s);
 %nonassoc DOUBLE_EQUALS NOT_EQUALS LESS GREATER LESS_EQUAL GREATER_EQUAL
 %left PLUS MINUS
 %left ASTERISK SLASH
+%left DOUBLE_BANG
 %right CARET DOUBLE_ASTERISK DOUBLE_CARET
 %right COLON
 %right RIGHT_ARROW LEFT_ARROW FAT_ARROW EQUALS DOUBLE_COLON
@@ -74,11 +78,11 @@ void yyerror(const char *s);
 
 %%
 
-program: decl_list { root = ProgramNode::create($1->block); $$ = root; }
+program: decl_list { root = ProgramNode::create($1); $$ = root; }
 
 decl_list:
-      decl_list decl { $$ = DeclNode::addDeclToList($1, $2); }
-    | decl           { $$ = DeclNode::createDeclList($1); }
+      decl_list decl { $$ = DeclListNode::addDecl($1, $2); }
+    | decl           { $$ = DeclListNode::create($1); }
     ;
 
 decl_list_opt:
@@ -87,7 +91,7 @@ decl_list_opt:
     ;
 
 decl_block:
-      LEFT_BRACE decl_list_opt RIGHT_BRACE
+      LEFT_BRACE decl_list_opt RIGHT_BRACE { $$ = $2; }
     ;
 
 opt_where:
@@ -99,18 +103,27 @@ decl:
       func_signature
     | func_definition
     | var_decl
-    | var_decl_block
     | data_decl
     ;
 
 /* --- Объявление переменной --- */
 var_decl:
-      KW_LET var_decl_block                       { $$ = $2; } 
-    | KW_LET LEFT_BRACE decl_list_opt RIGHT_BRACE { $$ = $3; }
+      KW_LET LEFT_BRACE binding_list_opt RIGHT_BRACE { $$ = DeclNode::createLetBlock($3); }
     ;
 
-var_decl_block:
+binding_list:
+      binding_list binding { $$ = DeclListNode::addDecl($1, $2); }
+    | binding              { $$ = DeclListNode::create($1); }
+    ;
+
+binding_list_opt:
+      binding_list { $$ = $1; }
+    | /* void */   { $$ = nullptr; }
+    ;
+
+binding:
       ID EQUALS expr SEMICOLON { $$ = DeclNode::createVarDecl($1, $3); }
+      // Здесь могут быть и func_definition с 1+ аргументами, если они допускаются в let/where
     ;
 
 /* --- Объявление функции --- */
@@ -164,17 +177,23 @@ expr:
     | FLOAT       { $$ = ExprNode::createLiteral($1); }
     | KW_TRUE     { $$ = ExprNode::createLiteral("true"); }
     | KW_FALSE    { $$ = ExprNode::createLiteral("false"); }
+	| CHAR_LITERAL { $$ = ExprNode::createLiteral($1); }
+	| STRING_LITERAL { $$ = ExprNode::createLiteral($1); }
     | ID          { $$ = ExprNode::createVarRef($1); }
     | ID_CAP      { $$ = ExprNode::createVarRef($1); }
     | LEFT_BRACKET expr_list_opt RIGHT_BRACKET { $$ = ExprNode::createArrayExpr($2); }
     | LEFT_PAREN expr_list_opt RIGHT_PAREN     { $$ = ExprNode::createTupleExpr($2); }
     | LEFT_PAREN expr RIGHT_PAREN              { $$ = $2; }
+	
+	/* применение функций: f x */
+	| expr expr { $$ = ExprNode::createFuncCall($1, $2); }
 
     /* арифметика */
     | expr PLUS expr { $$ = ExprNode::createBinaryExpr("+", $1, $3); }
     | expr MINUS expr
     | expr ASTERISK expr
     | expr SLASH expr
+	| expr DOUBLE_BANG expr { $$ = ExprNode::createBinaryExpr("!!", $1, $3); }
     | expr CARET expr
     | expr DOUBLE_ASTERISK expr
     | expr DOUBLE_CARET expr
@@ -232,10 +251,34 @@ expr_list_tail:
       }
     ;
 
+
+
+/* --- Сопоставление с образцом (Patterns) --- */
+pattern:
+	ID							{ $$ = ExprNode::createVarPattern($1); } // Переменная или Wildcard (если ID = "_")
+	| DEC_LITERAL				{ $$ = ExprNode::createLiteralPattern($1); }
+	| KW_TRUE					{ $$ = ExprNode::createLiteralPattern("true"); }
+	| ID_CAP					{ $$ = ExprNode::createConstructorPattern($1, nullptr); } // Конструктор без аргументов
+	| LEFT_PAREN pattern_list RIGHT_PAREN		{ $$ = ExprNode::createTuplePattern($2); } // Образец кортежа
+	| LEFT_BRACKET pattern_list RIGHT_BRACKET	{ $$ = ExprNode::createListPattern($2); } // Образец списка
+	// Добавление конструкторов с аргументами:
+	| ID_CAP pattern							{ $$ = ExprNode::createConstructorPattern($1, $2); } // Just x
+	// Добавление оператора Cons (::):
+	| pattern COLON pattern				{ $$ = ExprNode::createConsPattern($1, $3); } // x : xs
+	| LEFT_PAREN pattern RIGHT_PAREN	{ $$ = $2; } // Группировка
+	;
+
+pattern_list:
+	pattern COMMA pattern_list		{ $$ = ExprNode::addPatternToList($1, $3); }
+	| pattern						{ $$ = ExprNode::createPatternList($1); }
+	;
+
+
+
 /* --- Список параметров функции --- */
 param_list:
-      param_list ID { $$ = DeclNode::addParamToList($1, $2); }
-    | ID            { $$ = DeclNode::createParamList($1); }
+      param_list pattern { $$ = DeclListNode::addParamToList($1, $2); }
+    | pattern            { $$ = DeclListNode::createParamList($1); }
     ;
 
 /* --- Ветки case --- */
@@ -250,7 +293,7 @@ case_branch_list:
     ;
 
 case_branch:
-      expr RIGHT_ARROW expr
+      pattern RIGHT_ARROW expr
     ;
 
 /* --- do-блок --- */
