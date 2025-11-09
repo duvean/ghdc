@@ -212,6 +212,34 @@ DeclListNode* DeclListNode::addParamToList(DeclListNode* list, ExprNode* pattern
 
 
 /* --- Expr --- */
+
+std::string getExprDescription(ExprNode* node) {
+    if (!node) return "NULL";
+    if (!node->name.empty()) return "VarRef(" + node->name + ")";
+    if (!node->value.empty()) return "Literal(" + node->value + ")";
+    
+    // Для более сложных узлов (например, BINARY, IF)
+    if (!node->op.empty()) return "Binary(" + node->op + ")"; 
+
+    // Заглушка, если нет полей:
+    return "Complex/Pattern"; 
+}
+
+// --- Новый метод для вывода содержимого списка ---
+// Предполагаем, что list — это список, который содержит элементы в list->block
+std::string listExprContent(ExprNode* list) {
+    if (!list || list->block.empty()) return "";
+    
+    std::string content;
+    for (size_t i = 0; i < list->block.size(); ++i) {
+        if (i > 0) content += ", ";
+        content += getExprDescription(list->block[i]);
+    }
+    return content;
+}
+
+
+
 ExprNode* ExprNode::createLiteral(const std::string& val) {
     std::cout << "createLiteral(" << val << ")\n";
     return new ExprNode(val);
@@ -268,12 +296,31 @@ ExprNode* ExprNode::createReturnExpr(ExprNode* expr) {
 }
 
 ExprNode* ExprNode::createExprList(ExprNode* first) {
-    std::cout << "createExprList\n";
+    // В реальной реализации: Создается новый узел списка, first добавляется в list->block
+    // ExprNode* list = new ExprNode(NodeType::EXPR_LIST);
+    // list->block.push_back(first);
+    
+    // В заглушке: first становится списком.
+    std::cout << "createExprList. Start: [" << getExprDescription(first) << "]\n";
     return first;
 }
 
 ExprNode* ExprNode::addExprToList(ExprNode* list, ExprNode* newExpr) {
-    std::cout << "addExprToList\n";
+    // В реальной реализации: newExpr добавляется в list->block.
+    // list->block.push_back(newExpr);
+
+    // ВНИМАНИЕ: Если list является одиночным узлом (как в вашей заглушке), 
+    // это не совсем корректно. Но для трассировки:
+    
+    // Моделируем добавление
+    std::string added = getExprDescription(newExpr);
+    
+    // Моделируем старое содержимое (это очень приблизительно в вашей заглушке)
+    std::string oldContent = getExprDescription(list); 
+
+    std::cout << "addExprToList. Added: " << added 
+              << " to list starts with: [" << oldContent << "]\n";
+    
     return list;
 }
 
@@ -328,17 +375,23 @@ ExprNode* ExprNode::createConsPattern(ExprNode* headPattern, ExprNode* tailPatte
     return nullptr;
 }
 
-ExprNode* ExprNode::addPatternToList(ExprNode* newPatternPattern, ExprNode* existingListPattern) {
-    std::cout << "addPatternToList\n"; 
-    // В реальной реализации здесь должно быть: 
-    // newPatternPattern->setNext(existingListPattern);
-    // return newPatternPattern;
-    return existingListPattern;
+ExprNode* ExprNode::addPatternToList(ExprNode* newPattern, ExprNode* existingList) {
+    // newPatternPattern становится новым началом списка
+    // В реальной реализации: newPattern->setNext(existingList);
+
+    std::string added = getExprDescription(newPattern);
+    std::string currentHead = getExprDescription(existingList);
+    
+    std::cout << "addPatternToList. New element: " << added 
+              << ". After element: [" << currentHead << "]\n"; 
+    
+    // Возвращаем существующий список, чтобы показать, что это новый узел списка.
+    // Примечание: В Yacc/Bison это обычно возвращает новый head ($1).
+    // Ваша заглушка возвращает $2.
+    return existingList; 
 }
 
 ExprNode* ExprNode::createPatternList(ExprNode* singlePattern) {
-    std::cout << "createPatternList\n";
-    // В реальной реализации может быть создан новый узел списка, содержащий singlePattern.
-    // Для заглушки достаточно вернуть сам элемент, так как он фактически является началом списка.
+    std::cout << "createPatternList. Start: [" << getExprDescription(singlePattern) << "]\n";
     return singlePattern; 
 }
