@@ -29,7 +29,7 @@ void yyerror(const char *s);
 }
 
 %type <program> program
-%type <decl> decl func_signature func_definition var_decl data_decl binding
+%type <decl> decl func_signature func_definition let_block data_decl binding
 %type <decl_list> decl_list decl_list_opt binding_list binding_list_opt
 %type <decl_list> opt_where decl_block constr_list param_list
 %type <expr> expr expr_list expr_list_opt expr_list_tail
@@ -54,6 +54,7 @@ void yyerror(const char *s);
 %token SINGLELINE_COMMENT DOUBLE_PLUS DOUBLE_DOT DOUBLE_BANG DOT_AMPERSAND_DOT DOT_PIPE_DOT DOUBLE_GREATER_EQUAL DOUBLE_GREATER EQUAL_DOUBLE_LESS AT_SIGN TILDE BANG PERCENT KW_DEFAULT KW_CLASS KW_INSTANCE KW_DERIVING KW_IMPORT KW_MODULE KW_FOREIGN KW_INFIX KW_INFIXR KW_AS KW_HIDING KW_QUALIFIED KW_NEWTYPE KW_EXPORT KW_CCALL KW_PRINT KW_GETLINE KW_INT KW_INTEGER KW_CHAR KW_STRING KW_FLOAT KW_BOOL BACKTICK KW_INFIXL AMPERSAND OPERATOR LBRACE RBRACE
 
 /* ==== Приоритеты ==== */
+%nonassoc KW_IN
 %left DOT
 %right DOLLAR
 %left DOUBLE_PIPE
@@ -67,7 +68,6 @@ void yyerror(const char *s);
 %right RIGHT_ARROW LEFT_ARROW FAT_ARROW EQUALS DOUBLE_COLON
 %nonassoc KW_IF KW_THEN KW_ELSE
 %nonassoc KW_RETURN
-%nonassoc KW_LET
 /* Маркер для завершения do-оператора: самая низкая приоритетность.
    Правило do_stmt: expr будет иметь этот приоритет, поэтому при появлении
    оператора с более высоким приоритетом бизон предпочтёт шифт (продолжить expr).
@@ -102,12 +102,13 @@ opt_where:
 decl:
       func_signature
     | func_definition
-    | var_decl
+    | let_block
     | data_decl
+    | binding
     ;
 
 /* --- Объявление переменной --- */
-var_decl:
+let_block:
       KW_LET LEFT_BRACE binding_list_opt RIGHT_BRACE { $$ = DeclNode::createLetBlock($3); }
     ;
 
@@ -123,7 +124,6 @@ binding_list_opt:
 
 binding:
       ID EQUALS expr SEMICOLON { $$ = DeclNode::createVarDecl($1, $3); }
-      // Здесь могут быть и func_definition с 1+ аргументами, если они допускаются в let/where
     ;
 
 /* --- Объявление функции --- */
@@ -176,36 +176,38 @@ expr:
     | FLOAT       { $$ = ExprNode::createLiteral($1); }
     | KW_TRUE     { $$ = ExprNode::createLiteral("true"); }
     | KW_FALSE    { $$ = ExprNode::createLiteral("false"); }
-	| CHAR_LITERAL { $$ = ExprNode::createLiteral($1); }
-	| STRING_LITERAL { $$ = ExprNode::createLiteral($1); }
+	  | CHAR_LITERAL   { $$ = ExprNode::createLiteral($1); }
+	  | STRING_LITERAL { $$ = ExprNode::createLiteral($1); }
     | ID          { $$ = ExprNode::createVarRef($1); }
     | ID_CAP      { $$ = ExprNode::createVarRef($1); }
     | LEFT_BRACKET expr_list_opt RIGHT_BRACKET { $$ = ExprNode::createArrayExpr($2); }
     | LEFT_PAREN expr_list_opt RIGHT_PAREN     { $$ = ExprNode::createTupleExpr($2); }
     | LEFT_PAREN expr RIGHT_PAREN              { $$ = $2; }
 	
-	/* применение функций: f x */
-	| expr expr { $$ = ExprNode::createFuncCall($1, $2); }
+	  /* применение функций: f x */
+	  | expr expr { $$ = ExprNode::createFuncCall($1, $2); }
 
-    /* арифметика */
-    | expr PLUS expr { $$ = ExprNode::createBinaryExpr("+", $1, $3); }
-    | expr MINUS expr
-    | expr ASTERISK expr
+    /* --- арифметика --- */
+    | expr PLUS expr     { $$ = ExprNode::createBinaryExpr("+", $1, $3); }
+    | expr MINUS expr    { $$ = ExprNode::createBinaryExpr("-", $1, $3); }
+    | expr ASTERISK expr { $$ = ExprNode::createBinaryExpr("*", $1, $3); }
     | expr SLASH expr
-	| expr DOUBLE_BANG expr { $$ = ExprNode::createBinaryExpr("!!", $1, $3); }
+	  | expr DOUBLE_BANG expr { $$ = ExprNode::createBinaryExpr("!!", $1, $3); }
     | expr CARET expr
     | expr DOUBLE_ASTERISK expr
     | expr DOUBLE_CARET expr
 
-    /* логика и сравнение */
-    | expr DOUBLE_EQUALS expr
-    | expr NOT_EQUALS expr
-    | expr LESS expr
-    | expr GREATER expr
-    | expr LESS_EQUAL expr
-    | expr GREATER_EQUAL expr
-    | expr DOUBLE_AMPERSAND expr
-    | expr DOUBLE_PIPE expr
+    /* --- Операторы сравнения --- */
+    | expr DOUBLE_EQUALS expr       { $$ = ExprNode::createBinaryExpr("==", $1, $3); }
+    | expr NOT_EQUALS expr          { $$ = ExprNode::createBinaryExpr("!=", $1, $3); }
+    | expr LESS expr                { $$ = ExprNode::createBinaryExpr("<", $1, $3); }
+    | expr GREATER expr             { $$ = ExprNode::createBinaryExpr(">", $1, $3); }
+    | expr LESS_EQUAL expr          { $$ = ExprNode::createBinaryExpr("<=", $1, $3); }
+    | expr GREATER_EQUAL expr       { $$ = ExprNode::createBinaryExpr(">=", $1, $3); }
+
+    /* --- Логические операторы --- */
+    | expr DOUBLE_PIPE expr         { $$ = ExprNode::createBinaryExpr("||", $1, $3); }
+    | expr DOUBLE_AMPERSAND expr    { $$ = ExprNode::createBinaryExpr("&&", $1, $3); }
 
     /* функциональные операторы */
     | expr COLON expr
@@ -221,7 +223,7 @@ expr:
     | KW_CASE expr KW_OF LEFT_BRACE case_branch_list_opt RIGHT_BRACE { $$ = ExprNode::createCaseExpr($2, $5); }
 
     /* let ... in ... */
-    | KW_LET decl_list KW_IN expr %prec KW_LET { $$ = ExprNode::createLetInExpr($2, $4); }
+    | let_block KW_IN expr %prec KW_IN { $$ = ExprNode::createLetInExpr($1, $3); }
 
     /* do-нотация */
     | KW_DO do_block { $$ = ExprNode::createDoExpr($2); }
