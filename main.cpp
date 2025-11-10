@@ -18,7 +18,7 @@ int main(int argc, char** argv) {
         yyin = stdin;
     }
     if(yyparse() != 0) {
-         fprintf(stdout, "Parsing error in main\n");
+         /* fprintf(stdout, "Parsing error in main\n"); */
          return(1);
     }
     if (argc > 1) fclose(yyin);

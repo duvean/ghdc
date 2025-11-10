@@ -32,8 +32,8 @@ void yyerror(const char *s);
 %type <decl> decl func_signature func_definition let_block data_decl binding
 %type <decl_list> decl_list decl_list_opt binding_list binding_list_opt
 %type <decl_list> opt_where decl_block constr_list param_list
-%type <expr> expr expr_list expr_list_opt expr_list_tail
-%type <expr> type_expr
+%type <expr> expr basic_expr type_expr 
+%type <expr> expr_list expr_list_opt expr_list_tail
 %type <expr> case_branch_list_opt case_branch_list case_branch
 %type <expr> do_block do_stmt_list do_stmt
 %type <expr> pattern pattern_list
@@ -170,7 +170,7 @@ constr_list:
 
 
 /* --- Выражения --- */
-expr:
+basic_expr:
       DEC_LITERAL { $$ = ExprNode::createLiteral($1); }
     | HEX_LITERAL { $$ = ExprNode::createLiteral($1); }
     | OCT_LITERAL { $$ = ExprNode::createLiteral($1); }
@@ -184,9 +184,11 @@ expr:
     | LEFT_BRACKET expr_list_opt RIGHT_BRACKET { $$ = ExprNode::createArrayExpr($2); }
     | LEFT_PAREN expr_list_opt RIGHT_PAREN     { $$ = ExprNode::createTupleExpr($2); }
     | LEFT_PAREN expr RIGHT_PAREN              { $$ = $2; }
-	
+
+expr:
+      basic_expr
 	  /* применение функций: f x */
-	  | expr expr %prec APPLY_PREC { $$ = ExprNode::createFuncCall($1, $2); }
+	  | expr basic_expr %prec APPLY_PREC { $$ = ExprNode::createFuncCall($1, $2); }
 
     /* --- арифметика --- */
     | expr PLUS expr     { $$ = ExprNode::createBinaryExpr("+", $1, $3); }
@@ -317,5 +319,5 @@ do_stmt:
 void yyerror(const char *s) {
     extern int yylineno;
     extern char *yytext;
-    fprintf(stderr, "Parser error: %s at line %d, near token '%s'\n", s, yylineno, yytext);
+    /* fprintf(stderr, "Parser error: %s at line %d, near token '%s'\n", s, yylineno, yytext); */
 }
