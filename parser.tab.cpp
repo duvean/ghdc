@@ -2698,6 +2698,6 @@ yyreturn:
 void yyerror(const char *s) {
     extern int yylineno;
     extern char *yytext;
-    fprintf(stderr, "Parser error: %s at line %d, near token '%s'\n", s, yylineno, yytext);
+    /* fprintf(stderr, "Parser error: %s at line %d, near token '%s'\n", s, yylineno, yytext); */
 }
 

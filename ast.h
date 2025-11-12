@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <string>
+#include <sstream>
 
 enum NodeType {
     NODE_PROGRAM,
@@ -47,7 +48,13 @@ class DeclListNode;
 class ASTNode {
 public:
     NodeType type;
-    ASTNode(NodeType t) : type(t) {}
+    size_t nodeId;
+    static size_t nextNodeId;
+
+    virtual std::string toDotString() const = 0; 
+    virtual std::string getDotLabel() const = 0; 
+
+    ASTNode(NodeType t) : type(t), nodeId(nextNodeId++) {}
     virtual ~ASTNode() = default;
 };
 
@@ -60,8 +67,6 @@ public:
     ASTNode* paramsList = nullptr;         // Для параметров в объявлении функции
     ASTNode* whereBlock = nullptr;         // Для func_definition
 
-    DeclNode(NodeType t) : ASTNode(t) {}
-
     static DeclNode* createVarDecl(const std::string& name, ExprNode* expr);
     static DeclNode* createFuncDef(const std::string& name, 
                                   ASTNode* params, 
@@ -72,6 +77,11 @@ public:
     static DeclNode* createTypeDecl(const std::string& name, ASTNode* typeExpr);
     static DeclNode* createParameter(ExprNode* patternNode);
     static DeclNode* createLetBlock(DeclListNode* declList);
+
+    virtual std::string toDotString() const override;
+    virtual std::string getDotLabel() const override;
+
+    DeclNode(NodeType t) : ASTNode(t) {}
     DeclNode(const std::string& name) : ASTNode(NodeType::DECL_VAR), name(name) {}
 };
 
@@ -83,6 +93,9 @@ public:
 
     DeclListNode() : ASTNode(DECL_LIST) {}
     std::string listToString() const;
+
+    virtual std::string toDotString() const override;
+    virtual std::string getDotLabel() const override;
 
     static DeclListNode* create(DeclNode* first);
     static DeclListNode* addDecl(DeclListNode* list, DeclNode* new_decl);
@@ -98,8 +111,14 @@ public:
 class ProgramNode : public ASTNode {
 public:
     std::vector<DeclNode*> decls;
-    ProgramNode() : ASTNode(NODE_PROGRAM) {}
+
     static ProgramNode* create(DeclListNode* declList);
+
+    virtual std::string toDotString() const override;
+    virtual std::string getDotLabel() const override;
+
+    ProgramNode() : ASTNode(NODE_PROGRAM) {}
+
 };
 
 
@@ -118,8 +137,6 @@ public:
     ExprNode* expr_false = nullptr;
     ExprNode* function = nullptr;
     ExprNode* argument = nullptr;
-
-    ExprNode(NodeType t) : ASTNode(t) {}
 
     static ExprNode* createLiteral(const std::string& val);
     static ExprNode* createVarRef(const std::string& name);
@@ -163,5 +180,9 @@ public:
     static ExprNode* createCaseBranchList(ExprNode* branch);
     static ExprNode* addCaseBranchToList(ExprNode* list, ExprNode* newBranch);
 
+    virtual std::string toDotString() const override;
+    virtual std::string getDotLabel() const override;
+
+    ExprNode(NodeType t) : ASTNode(t) {}
     ExprNode(const std::string& val) : ASTNode(NodeType::EXPR_LITERAL), value(val) {}
 };

@@ -1,0 +1,22 @@
+digraph AST {
+    node [shape=box];
+    10 [label="Program (ROOT)"];
+    10 -> 8 [label="Decl #1"];
+    8 [label="UNKNOWN\nName: LET_BLOCK"];
+    8 -> 7 [label="Where/Data Constr"];
+    7 [label="Decl List\n(1 items)" shape=oval style=filled fillcolor="#f0f0ff"];
+    7 -> 6 [label="Item #1"];
+    6 [label="VAR_DECL\nName: var"];
+    6 -> 5 [label="Expr"];
+    5 [label="UNKNOWN"];
+    5 -> 2 [label="Condition"];
+    2 [label="UNKNOWN\nOp: >"];
+    2 -> 0 [label="Left"];
+    0 [label="UNKNOWN\nName: x"];
+    2 -> 1 [label="Right"];
+    1 [label="UNKNOWN\nValue: 10"];
+    5 -> 3 [label="Then"];
+    3 [label="UNKNOWN\nValue: 1"];
+    5 -> 4 [label="Else"];
+    4 [label="UNKNOWN\nValue: 0"];
+}
