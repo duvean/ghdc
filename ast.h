@@ -7,8 +7,10 @@ enum NodeType {
     DECL_VAR,
     DECL_FUNC,
     DECL_DATA,
+    DECL_CONSTRUCTOR,
     DECL_TYPE,
     DECL_LIST,
+    DECL_BLOCK,
     EXPR_LITERAL,
     EXPR_VAR,
     EXPR_BINARY,
@@ -20,8 +22,22 @@ enum NodeType {
     EXPR_CASE,
     EXPR_LETIN,
     EXPR_DO,
-    EXPR_RETURN
-    // etc
+    EXPR_RETURN,
+    EXPR_LIST,
+    EXPR_LET_IN,
+    EXPR_PATTERN_VAR,
+    EXPR_PATTERN_LITERAL,
+    EXPR_PATTERN_CONSTRUCTOR,
+    EXPR_PATTERN_TUPLE,
+    EXPR_PATTERN_LIST,
+    EXPR_PATTERN_CONS,
+    EXPR_TYPE_PRIMITIVE,
+    EXPR_TYPE_CONSTRUCTOR,
+    EXPR_TYPE_VAR,
+    EXPR_TYPE_FUNCTION,
+    EXPR_TYPE_ANNOTATION,
+    EXPR_CASE_BRANCH,
+    EXPR_CASE_BRANCH_LIST
 };
 
 std::string nodeTypeToString(NodeType type);
@@ -41,6 +57,7 @@ public:
     class ExprNode* expr = nullptr;        // выражение справа от '='
     std::vector<std::string> params;       // Список имен параметров для func_definition
     ASTNode* typeExpr = nullptr;           // Для func_type_signature и type_decl
+    ASTNode* paramsList = nullptr;         // Для параметров в объявлении функции
     ASTNode* whereBlock = nullptr;         // Для func_definition
 
     DeclNode(NodeType t) : ASTNode(t) {}
@@ -51,18 +68,14 @@ public:
                                   ExprNode* body, 
                                   ASTNode* whereBlock);
     static DeclNode* createFuncSignature(const std::string& name, ASTNode* typeExpr);
-    /*
-	static DeclNode* createParamList(const std::string& name);
-    static DeclNode* addParamToList(DeclNode* list, const std::string& name);
-    */
-	static DeclNode* createParamList(ExprNode* patternNode);
-	static DeclNode* addParamToList(DeclNode* list, ExprNode* patternNode);
 	static DeclNode* createDataDecl(const std::string& name, ASTNode* constructors);
     static DeclNode* createTypeDecl(const std::string& name, ASTNode* typeExpr);
     static DeclNode* createParameter(ExprNode* patternNode);
     static DeclNode* createLetBlock(DeclListNode* declList);
     DeclNode(const std::string& name) : ASTNode(NodeType::DECL_VAR), name(name) {}
 };
+
+
 
 class DeclListNode : public ASTNode {
 public:
@@ -76,7 +89,11 @@ public:
     static DeclListNode* getDeclsFromNode(ASTNode* node); 
     static DeclListNode* createParamList(ExprNode* patternNode);
     static DeclListNode* addParamToList(DeclListNode* list, ExprNode* patternNode);
+    static DeclListNode* createConstructorList(char* name);
+    static DeclListNode* addConstructorToList(DeclListNode* list, char* name);
 };
+
+
 
 class ProgramNode : public ASTNode {
 public:
@@ -84,6 +101,8 @@ public:
     ProgramNode() : ASTNode(NODE_PROGRAM) {}
     static ProgramNode* create(DeclListNode* declList);
 };
+
+
 
 class ExprNode : public ASTNode {
 public:
@@ -122,18 +141,27 @@ public:
 
     static ExprNode* createExprList(ExprNode* first);
     static ExprNode* addExprToList(ExprNode* list, ExprNode* new_expr);
-    ExprNode(const std::string& val) : ASTNode(NodeType::EXPR_LITERAL), value(val) {}
-	
-	
-	
-	// ------------------------ Заглушки ---------------------------------
+
 	static ExprNode* createFuncCall(ExprNode* funcExpr, ExprNode* argExpr);
-	static ExprNode* createVarPattern(char* identifier); 
-	static ExprNode* createLiteralPattern(char* literalValue);
-	static ExprNode* createConstructorPattern(char* constructorName, ExprNode* args);
+	static ExprNode* createVarPattern(const std::string& identifier); 
+	static ExprNode* createLiteralPattern(const std::string& literalValue);
+	static ExprNode* createConstructorPattern(const std::string& constructorName, ExprNode* args);
 	static ExprNode* createTuplePattern(ExprNode* patternList);
 	static ExprNode* createListPattern(ExprNode* patternList);
 	static ExprNode* createConsPattern(ExprNode* headPattern, ExprNode* tailPattern);
 	static ExprNode* addPatternToList(ExprNode* newPatternPattern, ExprNode* existingListPattern);
 	static ExprNode* createPatternList(ExprNode* singlePattern);
+
+    static ExprNode* createPrimitiveType(const std::string& name);
+    static ExprNode* createTypeConstructor(char* name);
+    static ExprNode* createTypeVar(char* name);
+    static ExprNode* createFunctionType(ExprNode* argType, ExprNode* returnType);
+    static ExprNode* createTypeAnnotation(ExprNode* expr, ExprNode* typeExpr);
+    static ExprNode* createConstructorList(char* name);
+    static ExprNode* addConstructorToList(ExprNode* list, char* name);
+    static ExprNode* createCaseBranch(ExprNode* pattern, ExprNode* expr);
+    static ExprNode* createCaseBranchList(ExprNode* branch);
+    static ExprNode* addCaseBranchToList(ExprNode* list, ExprNode* newBranch);
+
+    ExprNode(const std::string& val) : ASTNode(NodeType::EXPR_LITERAL), value(val) {}
 };

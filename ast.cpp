@@ -68,8 +68,14 @@ ProgramNode* ProgramNode::create(DeclListNode* declList) {
 }
 
 DeclNode* DeclNode::createVarDecl(const std::string& name, ExprNode* expr) {
-    std::cout << "createVarDecl(" << name << ")\n";
-    return new DeclNode(name);
+    DeclNode* node = new DeclNode(NodeType::DECL_VAR); 
+    
+    node->name = name;
+    node->expr = expr;
+    
+    std::cout << "createVarDecl(" << name << ") -> Expression: " 
+              << (expr ? "present" : "NULL") << "\n";
+    return node;
 }
 
 DeclNode* DeclNode::createFuncDef(const std::string& name, 
@@ -78,89 +84,88 @@ DeclNode* DeclNode::createFuncDef(const std::string& name,
                                   ASTNode* whereBlock) 
 {
     DeclNode* node = new DeclNode(NodeType::DECL_FUNC);
+    
     node->name = name;
-    node->expr = body; 
-    std::cout << "createFuncDef(" << name << ")\n";
+    node->expr = body; // Тело функции (правая часть '=')
+    node->paramsList = params; 
+    node->whereBlock = whereBlock; // Блок локальных объявлений
+    
+    // --- Отладочный вывод ---
+    
+    // Размер списка параметров для трассировки:
+    size_t paramCount = 0;
+    // Явное приведение, так как params - это ASTNode*, который фактически DeclListNode*
+    DeclListNode* paramList = static_cast<DeclListNode*>(params);
+    if (paramList) {
+        paramCount = paramList->decls.size();
+    }
+    
+    std::cout << "createFuncDef(" << name << ") -> "
+              << "Params: " << paramCount
+              << ", Body: " << (body ? "present" : "NULL") 
+              << ", Where: " << (whereBlock ? "present" : "NULL") << "\n";
+              
     return node;
 }
 
 DeclNode* DeclNode::createFuncSignature(const std::string& name, ASTNode* typeExpr) {
-    std::cout << "createFuncSignature(" << name << ")\n";
-    return new DeclNode(name);
-}
-
-// Заглушка для addParamToList выше
-DeclNode* DeclNode::createParamList(ExprNode* patternNode) {
+    DeclNode* node = new DeclNode(NodeType::DECL_TYPE); 
     
-    // Поскольку у нас есть только узел, мы не можем вывести имя, как раньше.
-    std::cout << "createParamList\n";
+    node->name = name;
+    node->typeExpr = typeExpr;
     
-    //Реализация: 
-    // Создаем новый узел DeclNode, который будет выступать контейнером (списком) для параметров.
-    DeclNode* list = new DeclNode(NodeType::NODE_PROGRAM); // Используем ваш тип для списка
-
-    //ВАЖНО: 
-    // В отличие от старой версии, где мы создавали новый DeclNode для имени, 
-    // здесь мы должны добавить уже существующий ExprNode* (patternNode) в список.
-    // Если list->block ожидает только DeclNode*, здесь возникнет проблема типа!
-    // Для заглушки мы просто добавляем указатель, притворяясь, что 'block' его примет.
-
-    if (patternNode) {
-        // Мы предполагаем, что существует способ добавить ExprNode* в список DeclNode'ов.
-        // Если list->block — это std::vector<DeclNode*>, этот код вызовет ошибку компиляции 
-        // или undefined behavior, если вы используете reinterpret_cast! 
-        // Это чистая заглушка.
-        // list->block.push_back(patternNode); // <-- Ошибка типа
-    }
-    
-    // Возвращаем контейнер (список)
-    return list;
-}
-
-// Заглушка для addParamToList выше
-DeclNode* DeclNode::addParamToList(DeclNode* list, ExprNode* patternNode) {
-    std::cout << "addParamToList:\n";
-    return list;
+    std::cout << "createFuncSignature(" << name << ") -> Type: " 
+              << (typeExpr ? "present" : "NULL") << "\n";
+    return node;
 }
 
 DeclNode* DeclNode::createDataDecl(const std::string& name, ASTNode* constructors) {
-    std::cout << "createDataDecl(" << name << ")\n";
-    return new DeclNode(name);
+    DeclNode* node = new DeclNode(NodeType::DECL_DATA);
+    
+    node->name = name;
+    node->whereBlock = constructors; // Используем whereBlock для сохранения списка конструкторов
+    
+    std::cout << "createDataDecl(" << name << ") -> Constructors: " 
+              << (constructors ? "present" : "NULL") << "\n";
+    return node;
 }
 
 DeclNode* DeclNode::createTypeDecl(const std::string& name, ASTNode* typeExpr) {
     DeclNode* node = new DeclNode(NodeType::DECL_TYPE);
+    
     node->name = name;
-    node->typeExpr = typeExpr;
-    std::cout << "createTypeDecl(" << name << ")\n";
+    node->typeExpr = typeExpr; // Выражение, описывающее тип (правая часть '=')
+    
+    std::cout << "createTypeDecl(" << name << ") -> Type: " 
+              << (typeExpr ? "present" : "NULL") << "\n";
     return node;
 }
 
 DeclNode* DeclNode::createLetBlock(DeclListNode* declList) {
-    DeclNode* node = new DeclNode(NodeType::DECL_VAR);
-    node->whereBlock = declList; 
-    node->name = ""; // Имя не требуется для всего блока
+    // Узел, представляющий блок локальных объявлений
+    DeclNode* node = new DeclNode(NodeType::DECL_BLOCK); 
+    
+    node->whereBlock = declList; // Сохраняем список локальных объявлений
+    node->name = "LET_BLOCK"; // Имя для отладки
 
+    size_t size = declList ? declList->decls.size() : 0;
     std::cout << "createLetBlock: created node containing list of size " 
-               << (declList ? declList->decls.size() : 0) << "\n";
+              << size << "\n";
     return node;
 }
 
 DeclNode* DeclNode::createParameter(ExprNode* patternNode) {
-    // Параметр — это, по сути, объявление переменной в локальной области видимости.
+    // Параметр — это объявление, где имя может быть извлечено из паттерна.
     DeclNode* node = new DeclNode(NodeType::DECL_VAR);
     
-    // В DeclNode мы используем поле expr для хранения паттерна параметра.
-    // Если паттерн является простым ID, мы извлекаем имя.
-    // node->name = patternNode->name;
+    // Храним паттерн в поле expr.
     node->expr = patternNode;
-    // NOTE: Если patternNode является VarRef/ID, мы должны извлечь имя для node->name.
-    // Если ExprNode имеет поле name:
-    /*
-    if (patternNode->type == EXPR_VAR) {
-        node->name = static_cast<VarRefNode*>(patternNode)->name; 
-    }
-    */
+    
+    // NOTE: Если паттерн является простым ID, мы можем извлечь имя для node->name:
+    // if (patternNode && patternNode->type == NodeType::EXPR_PATTERN_VAR) {
+    //     node->name = patternNode->name;
+    // }
+    
     std::cout << "createParameter: created DeclNode for parameter.\n";
     return node;
 }
@@ -178,7 +183,6 @@ DeclListNode* DeclListNode::create(DeclNode* first) {
         list->decls.push_back(first);
     }
     
-    // Вывод: "Создан DeclList. Содержимое: [calc]"
     std::cout << "createDeclList. Contains: [" << declName << "]. Size: 1\n";
     return list;
 }
@@ -192,7 +196,6 @@ DeclListNode* DeclListNode::addDecl(DeclListNode* list, DeclNode* new_decl) {
     std::string content = list ? list->listToString() : "NULL";
     size_t currentSize = list ? list->decls.size() : 0;
     
-    // Вывод: "Добавлен {result}. Содержимое: [calc, {DECL_FUNC_DEF}, result]. Size: 3"
     std::cout << "addDeclToList. Added: " << getDeclName(new_decl) 
               << ". Contains: [" << content << "]. Size: " << currentSize << "\n";
     
@@ -204,12 +207,24 @@ DeclListNode* DeclListNode::createParamList(ExprNode* patternNode) {
     return DeclListNode::create(param_decl);
 }
 
-// Обновляем addParamToList, чтобы он передавал управление обновленной addDecl()
 DeclListNode* DeclListNode::addParamToList(DeclListNode* list, ExprNode* patternNode) {
     DeclNode* param_decl = DeclNode::createParameter(patternNode); 
     return DeclListNode::addDecl(list, param_decl);
 }
 
+DeclListNode* DeclListNode::createConstructorList(char* name) {
+    DeclNode* constructor_decl = new DeclNode(NodeType::DECL_CONSTRUCTOR);
+    constructor_decl->name = name;
+
+    return DeclListNode::create(constructor_decl);
+}
+
+DeclListNode* DeclListNode::addConstructorToList(DeclListNode* list, char* name) {
+    DeclNode* new_constructor_decl = new DeclNode(NodeType::DECL_CONSTRUCTOR);
+    new_constructor_decl->name = name;
+
+    return DeclListNode::addDecl(list, new_constructor_decl);
+}
 
 /* --- Expr --- */
 
@@ -256,155 +271,300 @@ ExprNode* ExprNode::createLiteral(const std::string& val) {
 
 ExprNode* ExprNode::createVarRef(const std::string& name) {
     std::cout << "createVarRef(" << name << ")\n";
-    ExprNode* node = new ExprNode(NodeType::EXPR_VAR);
+    ExprNode* node = new ExprNode(NodeType::EXPR_VAR); // Используем EXPR_VAR для VarRef
     node->name = name;
     return node;
 }
 
 ExprNode* ExprNode::createBinaryExpr(const std::string& op, ExprNode* left, ExprNode* right) {
-    std::cout << "createBinaryExpr(" << op << ")\n";
-    return new ExprNode("binary");
+    ExprNode* node = new ExprNode(NodeType::EXPR_BINARY);
+    node->op = op;
+    node->left = left;
+    node->right = right;
+    
+    std::cout << "createBinaryExpr(" << op << ") -> L: " 
+              << getExprDescription(left) << ", R: " 
+              << getExprDescription(right) << "\n";
+    return node;
 }
 
 ExprNode* ExprNode::createIfExpr(ExprNode* cond, ExprNode* t, ExprNode* f) {
-    std::cout << "createIfExpr\n";
-    return new ExprNode("if");
+    ExprNode* node = new ExprNode(NodeType::EXPR_IF);
+    node->cond = cond;
+    node->expr_true = t;
+    node->expr_false = f;
+    
+    std::cout << "createIfExpr -> Cond: " << getExprDescription(cond) << "\n";
+    return node;
 }
 
 ExprNode* ExprNode::createArrayExpr(ASTNode* elements) {
+    ExprNode* node = new ExprNode(NodeType::EXPR_ARRAY);
+    // Предполагаем, что elements — это ExprNode* (список элементов)
+    ExprNode* elementList = static_cast<ExprNode*>(elements); 
+
+    // Если elementList — это узел списка, мы можем скопировать его block или сохранить ссылку
+    if (elementList && elementList->type == NodeType::EXPR_LIST) {
+        node->block = elementList->block; // Копируем или присваиваем элементы
+        // В реальном коде: удаляем узел elementList, если он больше не нужен
+    } else {
+        // Или просто сохраняем сам список как левую ветвь для простоты
+        node->left = elementList; 
+    }
+    
     std::cout << "createArrayExpr\n";
-    return new ExprNode("array");
+    return node;
 }
 
 ExprNode* ExprNode::createTupleExpr(ASTNode* elements) {
+    ExprNode* node = new ExprNode(NodeType::EXPR_TUPLE);
+    node->left = static_cast<ExprNode*>(elements);
+    
     std::cout << "createTupleExpr\n";
-    return new ExprNode("tuple");
+    return node;
 }
 
 ExprNode* ExprNode::createLambda(ExprNode* params, ExprNode* body) {
-    std::cout << "createLambda\n";
-    return new ExprNode("lambda");
+    ExprNode* node = new ExprNode(NodeType::EXPR_LAMBDA);
+    
+    // params (ExprNode*), который, вероятно, является EXPR_LIST или DeclNode* // со списком параметров (паттернов).
+    node->left = params; 
+    
+    // body
+    node->right = body; 
+    
+    std::cout << "createLambda -> Params: " 
+              << (params ? getExprDescription(params) : "NULL") 
+              << ", Body: " << (body ? getExprDescription(body) : "NULL") << "\n";
+    return node;
 }
 
 ExprNode* ExprNode::createCaseExpr(ExprNode* cond, ASTNode* branches) {
-    std::cout << "createCaseExpr\n";
-    return new ExprNode("case");
+    ExprNode* node = new ExprNode(NodeType::EXPR_CASE);
+    node->cond = cond;
+    // Предполагаем, что branches является ExprNode* или контейнером, 
+    // который можно сохранить в одном из полей. Используем 'right' для списка ветвей.
+    node->right = static_cast<ExprNode*>(branches); 
+    
+    std::cout << "createCaseExpr -> Cond: " << getExprDescription(cond) << "\n";
+    return node;
 }
 
 ExprNode* ExprNode::createLetInExpr(ASTNode* decls, ExprNode* expr) {
-    std::cout << "createLetInExpr\n";
-    return new ExprNode("let-in");
+    ExprNode* node = new ExprNode(NodeType::EXPR_LET_IN);
+    // Предполагаем, что decls (список DeclNode*) можно сохранить в 'left'.
+    node->left = static_cast<ExprNode*>(decls); 
+    node->right = expr; // Выражение 'in'
+    
+    std::cout << "createLetInExpr -> Body: " << getExprDescription(expr) << "\n";
+    return node;
 }
 
 ExprNode* ExprNode::createDoExpr(ASTNode* block) {
-    std::cout << "createDoExpr\n";
-    return new ExprNode("do");
+    ExprNode* node = new ExprNode(NodeType::EXPR_DO);
+    
+    // Блок DO-выражений (binds/exprs) лучше всего хранить в `block`.
+    // Предполагаем, что входящий ASTNode* block — это ExprNode* типа EXPR_LIST.
+    ExprNode* blockList = static_cast<ExprNode*>(block);
+    
+    if (blockList && blockList->type == NodeType::EXPR_LIST) {
+        node->block = blockList->block; // Копируем список выражений/связываний
+    } else {
+        node->left = blockList; // Если это не EXPR_LIST, сохраняем как отдельный узел
+    }
+    
+    std::cout << "createDoExpr -> Block: " 
+              << (blockList ? "present" : "NULL") << "\n";
+    return node;
 }
 
 ExprNode* ExprNode::createReturnExpr(ExprNode* expr) {
-    std::cout << "createReturnExpr\n";
-    return new ExprNode("return");
+    ExprNode* node = new ExprNode(NodeType::EXPR_RETURN);
+    node->left = expr; 
+    std::cout << "createReturnExpr -> Expr: " 
+              << (expr ? getExprDescription(expr) : "NULL") << "\n";
+    return node;
 }
 
 ExprNode* ExprNode::createExprList(ExprNode* first) {
-    // В реальной реализации: Создается новый узел списка, first добавляется в list->block
-    // ExprNode* list = new ExprNode(NodeType::EXPR_LIST);
-    // list->block.push_back(first);
+    ExprNode* list = new ExprNode(NodeType::EXPR_LIST);
+    list->block.push_back(first);
     
-    // В заглушке: first становится списком.
     std::cout << "createExprList. Start: [" << getExprDescription(first) << "]\n";
-    return first;
+    return list;
 }
 
 ExprNode* ExprNode::addExprToList(ExprNode* list, ExprNode* newExpr) {
-    // В реальной реализации: newExpr добавляется в list->block.
-    // list->block.push_back(newExpr);
-
-    // ВНИМАНИЕ: Если list является одиночным узлом (как в вашей заглушке), 
-    // это не совсем корректно. Но для трассировки:
+    // В отличие от заглушки, мы теперь предполагаем, что list — это контейнер EXPR_LIST
     
-    // Моделируем добавление
     std::string added = getExprDescription(newExpr);
-    
-    // Моделируем старое содержимое (это очень приблизительно в вашей заглушке)
-    std::string oldContent = getExprDescription(list); 
+    std::string oldContent = (list && !list->block.empty()) 
+                            ? getExprDescription(list->block[0]) : "Empty"; 
 
+    if (list && list->type == NodeType::EXPR_LIST) {
+        list->block.push_back(newExpr);
+    }
+    
     std::cout << "addExprToList. Added: " << added 
               << " to list starts with: [" << oldContent << "]\n";
     
     return list;
 }
 
-
-// ------------------------ Заглушки ---------------------------------
 ExprNode* ExprNode::createFuncCall(ExprNode* funcExpr, ExprNode* argExpr) {
-    ExprNode* res = new ExprNode("FuncCall");
+    ExprNode* res = new ExprNode(NodeType::EXPR_FUNC_CALL);
     res->function = funcExpr;
     res->argument = argExpr;
+    
     std::cout << "createFuncCall. Func: " << getExprDescription(funcExpr) 
               << ", Arg: " << getExprDescription(argExpr) << "\n";
     return res;
 }
 
-ExprNode* ExprNode::createVarPattern(char* identifier) {
+ExprNode* ExprNode::createVarPattern(const std::string& identifier) {
+    ExprNode* node = new ExprNode(NodeType::EXPR_PATTERN_VAR);
+    node->name = identifier;
     std::cout << "createVarPattern:" << identifier << "\n";
-	// В реальной реализации здесь должно быть: 
-    // return new PatternNode(identifier, PatternType::Variable);
-    return nullptr;
+    return node;
 }
 
-ExprNode* ExprNode::createLiteralPattern(char* literalValue) {
+ExprNode* ExprNode::createLiteralPattern(const std::string& literalValue) {
+    ExprNode* node = new ExprNode(NodeType::EXPR_PATTERN_LITERAL);
+    node->value = literalValue;
     std::cout << "createLiteralPattern:" << literalValue << "\n";
-    // В реальной реализации здесь должно быть: 
-    // return new PatternNode(literalValue, PatternType::Literal);
-    return nullptr;
+    return node;
 }
 
-ExprNode* ExprNode::createConstructorPattern(char* constructorName, ExprNode* args) {
+ExprNode* ExprNode::createConstructorPattern(const std::string& constructorName, ExprNode* args) {
+    ExprNode* node = new ExprNode(NodeType::EXPR_PATTERN_CONSTRUCTOR);
+    node->name = constructorName;
+    node->argument = args; // Аргументы конструктора (если есть)
     std::cout << "createConstructorPattern:" << constructorName << "\n";
-    // В реальной реализации здесь должно быть: 
-    // return new PatternNode(constructorName, args, PatternType::Constructor);
-    return nullptr;
+    return node;
 }
 
 ExprNode* ExprNode::createTuplePattern(ExprNode* patternList) {
+    ExprNode* node = new ExprNode(NodeType::EXPR_PATTERN_TUPLE);
+    node->left = patternList;
     std::cout << "createTuplePattern\n";
-    // В реальной реализации здесь должно быть: 
-    // return new PatternNode(patternList, PatternType::Tuple);
-    return nullptr;
+    return node;
 }
 
 ExprNode* ExprNode::createListPattern(ExprNode* patternList) {
+    ExprNode* node = new ExprNode(NodeType::EXPR_PATTERN_LIST);
+    node->left = patternList;
     std::cout << "createListPattern\n";
-    // В реальной реализации здесь должно быть: 
-    // return new PatternNode(patternList, PatternType::List);
-    return nullptr;
+    return node;
 }
 
 ExprNode* ExprNode::createConsPattern(ExprNode* headPattern, ExprNode* tailPattern) {
+    ExprNode* node = new ExprNode(NodeType::EXPR_PATTERN_CONS);
+    node->left = headPattern;
+    node->right = tailPattern;
     std::cout << "createConsPattern\n";
-    // В реальной реализации здесь должно быть: 
-    // return new PatternNode(headPattern, tailPattern, PatternType::Cons);
-    return nullptr;
+    return node;
 }
 
-ExprNode* ExprNode::addPatternToList(ExprNode* newPattern, ExprNode* existingList) {
-    // newPatternPattern становится новым началом списка
-    // В реальной реализации: newPattern->setNext(existingList);
-
+ExprNode* ExprNode::addPatternToList(ExprNode* existingList, ExprNode* newPattern) {
     std::string added = getExprDescription(newPattern);
-    std::string currentHead = getExprDescription(existingList);
+    std::string currentHead = (existingList && !existingList->block.empty()) 
+                              ? getExprDescription(existingList->block[0]) : "Empty"; 
+    
+    if (existingList && existingList->type == NodeType::EXPR_LIST) {
+        existingList->block.push_back(newPattern);
+    }
     
     std::cout << "addPatternToList. New element: " << added 
               << ". After element: [" << currentHead << "]\n"; 
     
-    // Возвращаем существующий список, чтобы показать, что это новый узел списка.
-    // Примечание: В Yacc/Bison это обычно возвращает новый head ($1).
-    // Ваша заглушка возвращает $2.
     return existingList; 
 }
 
 ExprNode* ExprNode::createPatternList(ExprNode* singlePattern) {
+    ExprNode* list = new ExprNode(NodeType::EXPR_LIST); // Используем EXPR_LIST для паттерн-списков
+    list->block.push_back(singlePattern);
     std::cout << "createPatternList. Start: [" << getExprDescription(singlePattern) << "]\n";
-    return singlePattern; 
+    return list; 
+}
+
+
+
+
+
+// Базовые типы (KW_INT, KW_FLOAT, ...)
+ExprNode* ExprNode::createPrimitiveType(const std::string& name) {
+    ExprNode* node = new ExprNode(NodeType::EXPR_TYPE_PRIMITIVE);
+    node->value = name;
+    std::cout << "createPrimitiveType(" << name << ")\n";
+    return node;
+}
+
+// Конструктор типа (ID_CAP, напр., Maybe, List)
+ExprNode* ExprNode::createTypeConstructor(char* name) {
+    ExprNode* node = new ExprNode(NodeType::EXPR_TYPE_CONSTRUCTOR);
+    node->name = name;
+    std::cout << "createTypeConstructor(" << name << ")\n";
+    return node;
+}
+
+// Переменная типа (ID, напр., a, b)
+ExprNode* ExprNode::createTypeVar(char* name) {
+    ExprNode* node = new ExprNode(NodeType::EXPR_TYPE_VAR);
+    node->name = name;
+    std::cout << "createTypeVar(" << name << ")\n";
+    return node;
+}
+
+// Функциональный тип (type_expr -> type_expr)
+ExprNode* ExprNode::createFunctionType(ExprNode* argType, ExprNode* returnType) {
+    ExprNode* node = new ExprNode(NodeType::EXPR_TYPE_FUNCTION);
+    node->left = argType;
+    node->right = returnType;
+    std::cout << "createFunctionType\n";
+    return node;
+}
+
+// Аннотация типа (expr :: type_expr)
+ExprNode* ExprNode::createTypeAnnotation(ExprNode* expr, ExprNode* typeExpr) {
+    ExprNode* node = new ExprNode(NodeType::EXPR_TYPE_ANNOTATION);
+    node->left = expr;
+    node->right = typeExpr;
+    std::cout << "createTypeAnnotation\n";
+    return node;
+}
+
+
+
+
+
+
+
+
+// Создание одной ветви (pattern -> expr)
+ExprNode* ExprNode::createCaseBranch(ExprNode* pattern, ExprNode* expr) {
+    ExprNode* node = new ExprNode(NodeType::EXPR_CASE_BRANCH);
+    node->left = pattern;
+    node->right = expr;
+    std::cout << "createCaseBranch\n";
+    return node;
+}
+
+// Создание списка веток (Базовый случай)
+ExprNode* ExprNode::createCaseBranchList(ExprNode* branch) {
+    ExprNode* list = new ExprNode(NodeType::EXPR_CASE_BRANCH_LIST);
+    
+    // Ветка (branch) должна быть узлом EXPR_CASE_BRANCH
+    list->block.push_back(branch); 
+    std::cout << "createCaseBranchList. Start\n";
+    return list;
+}
+
+// Добавление ветви в список
+ExprNode* ExprNode::addCaseBranchToList(ExprNode* list, ExprNode* newBranch) {
+    if (list && list->type == NodeType::EXPR_CASE_BRANCH_LIST) {
+        list->block.push_back(newBranch);
+    }
+    std::cout << "addCaseBranchToList. Added branch. Total size: " 
+              << (list ? list->block.size() : 0) << "\n";
+    return list;
 }

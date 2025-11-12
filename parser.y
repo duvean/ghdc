@@ -138,15 +138,15 @@ func_signature:
     ;
 
 type_expr:
-    | KW_INT
-    | KW_FLOAT
-    | KW_CHAR
-    | KW_STRING
-    | KW_BOOL
-    | ID_CAP               // Конструктор типа (напр., Int, Maybe)
-    | ID                   // Переменная типа (напр., a, b)
-    | type_expr RIGHT_ARROW type_expr // Функциональный тип (напр., Int -> Int)
-    | LEFT_PAREN type_expr RIGHT_PAREN
+      KW_INT                  { $$ = ExprNode::createPrimitiveType("Int"); }
+    | KW_FLOAT                { $$ = ExprNode::createPrimitiveType("Float"); }
+    | KW_CHAR                 { $$ = ExprNode::createPrimitiveType("Char"); }
+    | KW_STRING               { $$ = ExprNode::createPrimitiveType("String"); }
+    | KW_BOOL                 { $$ = ExprNode::createPrimitiveType("Bool"); }
+    | ID_CAP                  { $$ = ExprNode::createTypeConstructor($1); } // Maybe, List
+    | ID                      { $$ = ExprNode::createTypeVar($1); } // a, b (переменная типа)
+    | type_expr RIGHT_ARROW type_expr  { $$ = ExprNode::createFunctionType($1, $3); } // Функциональный тип (->)
+    | LEFT_PAREN type_expr RIGHT_PAREN { $$ = $2; } // Группировка
     ;
 
 /* --- Определение типа данных --- */
@@ -155,8 +155,8 @@ data_decl:
     ;
 
 constr_list:
-      constr_list PIPE ID_CAP
-    | ID_CAP
+      constr_list PIPE ID_CAP { $$ = DeclListNode::addConstructorToList($1, $3); }
+    | ID_CAP                  { $$ = DeclListNode::createConstructorList($1); }
     ;
 
 
@@ -172,34 +172,33 @@ constr_list:
 
 /* --- Выражения --- */
 basic_expr:
-      DEC_LITERAL { $$ = ExprNode::createLiteral($1); }
-    | HEX_LITERAL { $$ = ExprNode::createLiteral($1); }
-    | OCT_LITERAL { $$ = ExprNode::createLiteral($1); }
-    | FLOAT       { $$ = ExprNode::createLiteral($1); }
-    | KW_TRUE     { $$ = ExprNode::createLiteral("true"); }
-    | KW_FALSE    { $$ = ExprNode::createLiteral("false"); }
+      DEC_LITERAL    { $$ = ExprNode::createLiteral($1); }
+    | HEX_LITERAL    { $$ = ExprNode::createLiteral($1); }
+    | OCT_LITERAL    { $$ = ExprNode::createLiteral($1); }
+    | FLOAT          { $$ = ExprNode::createLiteral($1); }
+    | KW_TRUE        { $$ = ExprNode::createLiteral("True"); }
+    | KW_FALSE       { $$ = ExprNode::createLiteral("False"); }
 	  | CHAR_LITERAL   { $$ = ExprNode::createLiteral($1); }
 	  | STRING_LITERAL { $$ = ExprNode::createLiteral($1); }
-    | ID          { $$ = ExprNode::createVarRef($1); }
-    | ID_CAP      { $$ = ExprNode::createVarRef($1); }
+    | ID             { $$ = ExprNode::createVarRef($1); }
+    | ID_CAP         { $$ = ExprNode::createVarRef($1); }
     | LEFT_BRACKET expr_list_opt RIGHT_BRACKET { $$ = ExprNode::createArrayExpr($2); }
     | LEFT_PAREN expr_list_opt RIGHT_PAREN     { $$ = ExprNode::createTupleExpr($2); }
     | LEFT_PAREN expr RIGHT_PAREN              { $$ = $2; }
 
 expr:
       basic_expr
-	  /* применение функций: f x */
 	  | expr basic_expr %prec APPLY_PREC { $$ = ExprNode::createFuncCall($1, $2); }
 
-    /* --- арифметика --- */
-    | expr PLUS expr     { $$ = ExprNode::createBinaryExpr("+", $1, $3); }
-    | expr MINUS expr    { $$ = ExprNode::createBinaryExpr("-", $1, $3); }
-    | expr ASTERISK expr { $$ = ExprNode::createBinaryExpr("*", $1, $3); }
-    | expr SLASH expr
-	  | expr DOUBLE_BANG expr { $$ = ExprNode::createBinaryExpr("!!", $1, $3); }
-    | expr CARET expr
-    | expr DOUBLE_ASTERISK expr
-    | expr DOUBLE_CARET expr
+    /* --- Арифметика --- */
+    | expr PLUS expr            { $$ = ExprNode::createBinaryExpr("+", $1, $3); }
+    | expr MINUS expr           { $$ = ExprNode::createBinaryExpr("-", $1, $3); }
+    | expr ASTERISK expr        { $$ = ExprNode::createBinaryExpr("*", $1, $3); }
+    | expr SLASH expr           { $$ = ExprNode::createBinaryExpr("/", $1, $3); }
+    | expr DOUBLE_BANG expr     { $$ = ExprNode::createBinaryExpr("!!", $1, $3); }
+    | expr CARET expr           { $$ = ExprNode::createBinaryExpr("^", $1, $3); }  // Возведение в степень
+    | expr DOUBLE_ASTERISK expr { $$ = ExprNode::createBinaryExpr("**", $1, $3); } // Двойное возведение в степень (Float)
+    | expr DOUBLE_CARET expr    { $$ = ExprNode::createBinaryExpr("^^", $1, $3); } // Двойное возведение в степень (Fractional)
 
     /* --- Операторы сравнения --- */
     | expr DOUBLE_EQUALS expr       { $$ = ExprNode::createBinaryExpr("==", $1, $3); }
@@ -213,11 +212,11 @@ expr:
     | expr DOUBLE_PIPE expr         { $$ = ExprNode::createBinaryExpr("||", $1, $3); }
     | expr DOUBLE_AMPERSAND expr    { $$ = ExprNode::createBinaryExpr("&&", $1, $3); }
 
-    /* функциональные операторы */
-    | expr COLON expr
-    | expr DOLLAR expr
-    | expr DOT expr
-    | expr DOUBLE_COLON type_expr  /* аннотация типа */
+    /* --- Функциональные операторы --- */
+    | expr COLON expr             { $$ = ExprNode::createBinaryExpr(":", $1, $3); } // Cons operator (часто в списке)
+    | expr DOLLAR expr            { $$ = ExprNode::createBinaryExpr("$", $1, $3); } // Аппликация функции ($)
+    | expr DOT expr               { $$ = ExprNode::createBinaryExpr(".", $1, $3); } // Композиция функций (.)
+    | expr DOUBLE_COLON type_expr { $$ = ExprNode::createTypeAnnotation($1, $3); }  // Аннотация типа (::)
 
     /* лямбда */
     | BACKSLASH expr RIGHT_ARROW expr { $$ = ExprNode::createLambda($2, $4); }
@@ -275,8 +274,8 @@ pattern:
 	;
 
 pattern_list:
-	pattern COMMA pattern_list		{ $$ = ExprNode::addPatternToList($1, $3); }
-	| pattern						{ $$ = ExprNode::createPatternList($1); }
+	pattern COMMA pattern_list { $$ = ExprNode::addPatternToList($1, $3); }
+	| pattern                  { $$ = ExprNode::createPatternList($1); }
 	;
 
 
@@ -289,17 +288,17 @@ param_list:
 
 /* --- Ветки case --- */
 case_branch_list_opt:
-      case_branch_list
-    | /* void (case x of {}) */
+      case_branch_list { $$ = $1; }
+    | /* void */       { $$ = nullptr; }
     ;
 
 case_branch_list:
-      case_branch SEMICOLON case_branch_list
-    | case_branch SEMICOLON
+      case_branch SEMICOLON case_branch_list { $$ = ExprNode::addCaseBranchToList($1, $3); }
+    | case_branch SEMICOLON { $$ = ExprNode::createCaseBranchList($1); }
     ;
 
 case_branch:
-      pattern RIGHT_ARROW expr
+      pattern RIGHT_ARROW expr { $$ = ExprNode::createCaseBranch($1, $3); }
     ;
 
 /* --- do-блок --- */
@@ -327,5 +326,5 @@ semicolon_opt:
 void yyerror(const char *s) {
     extern int yylineno;
     extern char *yytext;
-    fprintf(stderr, "Parser error: %s at line %d, near token '%s'\n", s, yylineno, yytext);
+    /* fprintf(stderr, "Parser error: %s at line %d, near token '%s'\n", s, yylineno, yytext); */
 }
