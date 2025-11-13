@@ -129,14 +129,14 @@ public:
     std::string value;    // литерал
     std::string name;     // переменная
     std::vector<ExprNode*> block;  // для expr_list
-
+	std::vector<ExprNode*> arguments;
+	
     ExprNode* left = nullptr;
     ExprNode* right = nullptr;
     ExprNode* cond = nullptr;
     ExprNode* expr_true = nullptr;
     ExprNode* expr_false = nullptr;
     ExprNode* function = nullptr;
-    ExprNode* argument = nullptr;
 
     static ExprNode* createLiteral(const std::string& val);
     static ExprNode* createVarRef(const std::string& name);
@@ -163,6 +163,7 @@ public:
 	static ExprNode* createVarPattern(const std::string& identifier); 
 	static ExprNode* createLiteralPattern(const std::string& literalValue);
 	static ExprNode* createConstructorPattern(const std::string& constructorName, ExprNode* args);
+	static ExprNode* addArgumentToConstructor(ExprNode* constructor, ExprNode* args);
 	static ExprNode* createTuplePattern(ExprNode* patternList);
 	static ExprNode* createListPattern(ExprNode* patternList);
 	static ExprNode* createConsPattern(ExprNode* headPattern, ExprNode* tailPattern);
@@ -180,7 +181,7 @@ public:
     static ExprNode* createCaseBranchList(ExprNode* branch);
     static ExprNode* addCaseBranchToList(ExprNode* list, ExprNode* newBranch);
 
-    virtual std::string toDotString() const override;
+    virtual std::string toDotString() const override; // Добавить вывод аргументов!
     virtual std::string getDotLabel() const override;
 
     ExprNode(NodeType t) : ASTNode(t) {}

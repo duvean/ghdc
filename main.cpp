@@ -18,8 +18,7 @@ int main(int argc, char** argv) {
     } 
     else yyin = stdin;
 
-    if(yyparse() != 0) return(1);
-    if (argc > 1) fclose(yyin);
+    int parse_result = yyparse();
 
     if (root) {
         std::string dot_code = root->toDotString();
@@ -27,17 +26,20 @@ int main(int argc, char** argv) {
         if (dot_file.is_open()) {
             dot_file << dot_code;
             dot_file.close();
-            std::cout << "\nAST generated in ast.dot\n";
-            std::cout << "   To visualuze use: dot -Tpng ast.dot -o ast.png\n";
+            
+            std::cout << "\nAST created successfuly in ast.dot\n";
+            std::cout << "   To visualize use: dot -Tpng ast.dot -o ast.png\n";
         } else {
             std::cerr << "Error: cannot create ast.dot\n";
-            return(1);
         }
     } else {
-        std::cerr << "Error: Root node wasn't created\n";
-        return(1);
+        std::cerr << "Error: AST root was not created, no dot generated\n";
     }
 
+    if (parse_result != 0) {
+        std::cerr << "Parsing ended with error\n";
+        return(1);
+    }
     if (argc > 1) fclose(yyin);
     return(0);
 }

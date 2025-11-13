@@ -530,7 +530,7 @@ ExprNode* ExprNode::addExprToList(ExprNode* list, ExprNode* newExpr) {
 ExprNode* ExprNode::createFuncCall(ExprNode* funcExpr, ExprNode* argExpr) {
     ExprNode* res = new ExprNode(NodeType::EXPR_FUNC_CALL);
     res->function = funcExpr;
-    res->argument = argExpr;
+    res->arguments.push_back(argExpr);
     
     std::cout << "createFuncCall. Func: " << getExprDescription(funcExpr) 
               << ", Arg: " << getExprDescription(argExpr) << "\n";
@@ -554,9 +554,17 @@ ExprNode* ExprNode::createLiteralPattern(const std::string& literalValue) {
 ExprNode* ExprNode::createConstructorPattern(const std::string& constructorName, ExprNode* args) {
     ExprNode* node = new ExprNode(NodeType::EXPR_PATTERN_CONSTRUCTOR);
     node->name = constructorName;
-    node->argument = args; // Аргументы конструктора (если есть)
-    std::cout << "createConstructorPattern:" << constructorName << "\n";
+    node->arguments.push_back(args); // Аргументы конструктора (если есть)
+    std::cout << "createConstructorPattern:" << constructorName 
+			  << ", Arg: " << getExprDescription(args) << "\n";
     return node;
+}
+
+ExprNode* ExprNode::addArgumentToConstructor(ExprNode* constructor, ExprNode* args) {
+    constructor->arguments.push_back(args); // Аргументы конструктора (если есть)
+    std::cout << "addConstructorPattern:" << constructor->name 
+			  << ", Arg: " << getExprDescription(args) << "\n";
+    return constructor;
 }
 
 ExprNode* ExprNode::createTuplePattern(ExprNode* patternList) {
@@ -724,11 +732,12 @@ std::string ExprNode::toDotString() const {
         ss << "    " << nodeId << " -> " << function->nodeId << " [label=\"Function\"];\n";
         ss << function->toDotString();
     }
+	/*
     if (argument) {
         ss << "    " << nodeId << " -> " << argument->nodeId << " [label=\"Argument\"];\n";
         ss << argument->toDotString();
     }
-    
+    */
     // D. Списки (Array, Tuple, Case Branches, Do block, ExprList)
     for (size_t i = 0; i < block.size(); ++i) {
         ExprNode* child = block[i];
