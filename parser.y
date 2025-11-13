@@ -1,3 +1,4 @@
+%define parse.error detailed
 %code requires { #include "ast.h" }
 %debug
 %{
@@ -33,7 +34,7 @@ void yyerror(const char *s);
 %type <decl_list> decl_list decl_list_opt binding_list binding_list_opt
 %type <decl_list> opt_where decl_block constr_list param_list
 %type <expr> expr basic_expr type_expr app_expr pow_expr mult_expr add_expr comp_expr log_and_expr log_or_expr cons_expr compose_expr
-%type <expr> expr_list expr_list_opt expr_list_tail
+%type <expr> tuple_list arr_list
 %type <expr> case_branch_list_opt case_branch_list case_branch
 %type <expr> do_block do_stmt_list do_stmt
 %type <expr> pattern pattern_list atomic_pattern constructor_app tuple_content
@@ -54,29 +55,48 @@ void yyerror(const char *s);
 %token SINGLELINE_COMMENT DOUBLE_PLUS DOUBLE_DOT DOUBLE_BANG DOT_AMPERSAND_DOT DOT_PIPE_DOT DOUBLE_GREATER_EQUAL DOUBLE_GREATER EQUAL_DOUBLE_LESS AT_SIGN TILDE BANG PERCENT KW_DEFAULT KW_CLASS KW_INSTANCE KW_DERIVING KW_IMPORT KW_MODULE KW_FOREIGN KW_INFIX KW_INFIXR KW_AS KW_HIDING KW_QUALIFIED KW_NEWTYPE KW_EXPORT KW_CCALL KW_PRINT KW_GETLINE KW_INT KW_INTEGER KW_CHAR KW_STRING KW_FLOAT KW_BOOL BACKTICK KW_INFIXL AMPERSAND OPERATOR LBRACE RBRACE
 
 /* ==== Приоритеты ==== */
-%right KW_IN             /* in (для let...in). Имеет самый низкий приоритет. */
-%nonassoc KW_IF KW_THEN KW_ELSE /* if/then/else. Не ассоциируются, низкий приоритет. */
-%nonassoc KW_RETURN      /* return (если используется как оператор) */
-%right RIGHT_ARROW       /* -> (для типов функций, лямбд) */
-%right LEFT_ARROW        /* <- (для монадных выражений, not in this grammar) */
-%right FAT_ARROW         /* => (для ограничений классов типов) */
-%right EQUALS            /* = (для определений, not an expression operator) */
-%right COLON             /* : (для составления списков: 1:[], list:tail) */
-%right DOUBLE_COLON      /* :: (для аннотаций типов) */
-%nonassoc DOUBLE_EQUALS NOT_EQUALS LESS GREATER LESS_EQUAL GREATER_EQUAL
-%left DOUBLE_AMPERSAND   /* && (Логическое И) */
-%left DOUBLE_PIPE        /* || (Логическое ИЛИ) */
-%left PLUS MINUS         /* + - (Сложение/Вычитание) */
-%left ASTERISK SLASH     /* * / (Умножение/Деление) */
-%left DOUBLE_BANG        /* !! (Доступ к элементу списка) - Часто высокий, но тут ставим рядом с * / */
-%right CARET DOUBLE_ASTERISK DOUBLE_CARET /* ^ ** ^^ (Степень) */
-%right DOLLAR             /* $ (Оператор применения с низким приоритетом) */
-%left DOT                /* . (Оператор композиции) */
-/* Маркер для завершения do-оператора: самая низкая приоритетность.
-   Правило do_stmt: expr будет иметь этот приоритет, поэтому при появлении
-   оператора с более высоким приоритетом бизон предпочтёт шифт (продолжить expr).
-*/
+/* Уровень 0 — типовые и структурные конструкции */
+%right FAT_ARROW RIGHT_ARROW LEFT_ARROW EQUALS
+/* :: => -> <- = */
+
+/* Низкоприоритетные синтаксические конструкции */
+%nonassoc KW_IF KW_THEN KW_ELSE KW_IN
+/* if then else, let ... in */
+
 %nonassoc DO_STMT_TERM
+/* Конец do-блока */
+
+/* Уровень 1 — $ (применение функции, самый низкий оператор) */
+%right DOLLAR
+/* $ */
+
+%right DOUBLE_COLON
+
+/* Уровень 3–4 — логические операторы */
+%right DOUBLE_PIPE      /* || (уровень 3) */
+%right DOUBLE_AMPERSAND /* && (уровень 4) */
+
+/* Уровень 5 — сравнения */
+%nonassoc DOUBLE_EQUALS NOT_EQUALS LESS GREATER LESS_EQUAL GREATER_EQUAL
+/* == /= < <= >= > */
+
+/* Уровень 6 — конструктор списков (cons) */
+%right COLON
+/* : */
+
+/* Уровень 7 — аддитивные */
+%left PLUS MINUS
+/* + - */
+
+/* Уровень 8 — мультипликативные */
+%left ASTERISK SLASH
+/* * / */
+
+/* Уровень 9 — наивысший приоритет */
+%right DOUBLE_BANG DOT CARET DOUBLE_ASTERISK DOUBLE_CARET
+/* !! . ^ ^^ ** */
+
+/* Приоритет для аппликации (выше любого оператора) */
 %left APPLY_PREC
 
 %start program
@@ -187,9 +207,12 @@ basic_expr:
 	| STRING_LITERAL { $$ = ExprNode::createLiteral($1); }
     | ID             { $$ = ExprNode::createVarRef($1); }
     | ID_CAP         { $$ = ExprNode::createVarRef($1); }
-    | LEFT_BRACKET expr_list_opt RIGHT_BRACKET { $$ = ExprNode::createArrayExpr($2); }
-    | LEFT_PAREN expr_list_opt RIGHT_PAREN     { $$ = ExprNode::createTupleExpr($2); }
-    | LEFT_PAREN expr RIGHT_PAREN              { $$ = $2; }
+	| LEFT_PAREN compose_expr RIGHT_PAREN	              { $$ = $2; } // Группировка
+	| LEFT_PAREN tuple_list RIGHT_PAREN		      { $$ = ExprNode::createTupleExpr($2); } // Образец кортежа
+	| LEFT_BRACKET arr_list RIGHT_BRACKET	      { $$ = ExprNode::createArrayExpr($2); } // Образец списка
+	| LEFT_PAREN RIGHT_PAREN                  		  { $$ = nullptr; } // Пустой кортеж
+	| LEFT_BRACKET RIGHT_BRACKET	                  { $$ = nullptr; } // Пустой список
+
 
 app_expr: basic_expr
         | app_expr basic_expr %prec APPLY_PREC { $$ = ExprNode::createFuncCall($1, $2); }
@@ -260,9 +283,9 @@ cons_expr: log_or_expr
  * Уровень 11: Аннотации, Композиция и Применение ($)
  */
 compose_expr: cons_expr
-            | cons_expr DOUBLE_COLON type_expr %prec DOUBLE_COLON { $$ = ExprNode::createTypeAnnotation($1, $3); }
-            | compose_expr DOT cons_expr %prec DOT               { $$ = ExprNode::createBinaryExpr(".", $1, $3); }
-            | cons_expr DOLLAR compose_expr %prec DOLLAR         { $$ = ExprNode::createBinaryExpr("$", $1, $3); }
+    | compose_expr DOT cons_expr           { $$ = ExprNode::createBinaryExpr(".", $1, $3); }
+    | compose_expr DOLLAR compose_expr     { $$ = ExprNode::createBinaryExpr("$", $1, $3); }
+    | compose_expr DOUBLE_COLON type_expr  { $$ = ExprNode::createTypeAnnotation($1, $3); }
 ;
 
 /*
@@ -286,25 +309,12 @@ expr: compose_expr
     | KW_RETURN expr %prec KW_RETURN { $$ = ExprNode::createReturnExpr($2); }
 ;
 
-expr_list_opt:
-      expr_list { $$ = $1; }
-    | /* void */     { $$ = nullptr; }
-    ;
-
-expr_list:
-      cons_expr COMMA expr_list_tail {
-          ExprNode* list = ExprNode::createExprList($1);
-          $$ = ExprNode::addExprToList(list, $3);
-      }
-    ;
-
-expr_list_tail:
-      cons_expr { $$ = ExprNode::createExprList($1); }
-    | cons_expr COMMA expr_list_tail {
-          ExprNode* list = ExprNode::createExprList($1);
-          $$ = ExprNode::addExprToList(list, $3);
-      }
-    ;
+tuple_list:
+    cons_expr COMMA arr_list	   { $$ = ExprNode::addExprToList($3, $1); }
+arr_list:
+	cons_expr COMMA arr_list 	   { $$ = ExprNode::addExprToList($3, $1); }
+	| cons_expr                    { $$ = ExprNode::createExprList($1); }
+	;
 	
 
 
