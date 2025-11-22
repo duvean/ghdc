@@ -1,4 +1,3 @@
-%define parse.error detailed
 %code requires { #include "ast.h" }
 %debug
 %{
@@ -362,8 +361,10 @@ case_branch_list_opt:
     ;
 
 case_branch_list:
-      case_branch SEMICOLON case_branch_list { $$ = ExprNode::addCaseBranchToList($1, $3); }
-    | case_branch SEMICOLON { $$ = ExprNode::createCaseBranchList($1); }
+      case_branch SEMICOLON 
+        { $$ = ExprNode::createCaseBranchList($1); } // БАЗОВЫЙ: Создает список из первой ветки
+    | case_branch_list case_branch SEMICOLON 
+        { $$ = ExprNode::addCaseBranchToList($1, $2); } // РЕКУРСИВНЫЙ: Добавляет $2 к списку $1
     ;
 
 case_branch:
