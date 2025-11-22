@@ -16,13 +16,52 @@ std::string getPatternName(ExprNode* patternNode) {
 
 std::string nodeTypeToString(NodeType type) {
     switch (type) {
-        case NODE_PROGRAM:     return "PROGRAM";
-        case DECL_VAR:         return "VAR_DECL";
-        case DECL_FUNC:        return "FUNC_DECL";
-        case DECL_LIST:        return "DECL_LIST";
-        case DECL_DATA:        return "DECL_DATA";
-        case DECL_TYPE:        return "DECL_TYPE";
-        default:               return "UNKNOWN";
+        // --- Главные узлы и объявления (Declarations) ---
+        case NODE_PROGRAM:              return "PROGRAM";
+        case DECL_VAR:                  return "VAR_DECL";
+        case DECL_FUNC:                 return "FUNC_DECL";
+        case DECL_DATA:                 return "DATA_DECL";
+        case DECL_TYPE:                 return "TYPE_ALIAS_DECL";
+        case DECL_CONSTRUCTOR:          return "DATA_CONSTRUCTOR";
+        case DECL_LIST:                 return "DECL_LIST";
+        case DECL_BLOCK:                return "DECL_BLOCK"; // Блок объявлений (напр., 'where' или 'let')
+        
+        // --- Выражения (Expressions) ---
+        case EXPR_LITERAL:              return "EXPR_LITERAL";
+        case EXPR_VAR:                  return "EXPR_VAR_REF";
+        case EXPR_BINARY:               return "EXPR_BINARY_OP";
+        case EXPR_FUNC_CALL:            return "EXPR_FUNC_CALL"; // Вызов/Аппликация
+        case EXPR_IF:                   return "EXPR_IF_THEN_ELSE";
+        case EXPR_ARRAY:                return "EXPR_ARRAY_LIT";
+        case EXPR_TUPLE:                return "EXPR_TUPLE_LIT";
+        case EXPR_LAMBDA:               return "EXPR_LAMBDA";
+        case EXPR_CASE:                 return "EXPR_CASE_OF";
+        case EXPR_LETIN:                return "EXPR_LET_IN"; // Ошибка в enum: см. EXPR_LET_IN
+        case EXPR_DO:                   return "EXPR_DO_BLOCK";
+        case EXPR_RETURN:               return "EXPR_RETURN";
+        case EXPR_LIST:                 return "EXPR_LIST";
+        case EXPR_LET_IN:               return "EXPR_LET_IN"; // Повтор (используйте этот, если он корректен)
+        
+        // --- Паттерны (Patterns) ---
+        case EXPR_PATTERN_VAR:          return "PATT_VAR";
+        case EXPR_PATTERN_LITERAL:      return "PATT_LITERAL";
+        case EXPR_PATTERN_CONSTRUCTOR:  return "PATT_CONSTRUCTOR";
+        case EXPR_PATTERN_TUPLE:        return "PATT_TUPLE";
+        case EXPR_PATTERN_LIST:         return "PATT_LIST";
+        case EXPR_PATTERN_CONS:         return "PATT_CONS"; // (a:b)
+        
+        // --- Типовые выражения (Type Expressions) ---
+        case EXPR_TYPE_PRIMITIVE:       return "TYPE_PRIMITIVE"; // Int, Bool
+        case EXPR_TYPE_CONSTRUCTOR:     return "TYPE_CONSTRUCTOR"; // List, Maybe
+        case EXPR_TYPE_VAR:             return "TYPE_VAR"; // a, b
+        case EXPR_TYPE_FUNCTION:        return "TYPE_FUNCTION"; // A -> B
+        case EXPR_TYPE_ANNOTATION:      return "TYPE_ANNOTATION"; // expr :: type
+        
+        // --- Ветки Case/Alternative ---
+        case EXPR_CASE_BRANCH:          return "CASE_BRANCH";
+        case EXPR_CASE_BRANCH_LIST:     return "CASE_BRANCH_LIST";
+
+        default:                        return "UNKNOWN_NODE_TYPE";
     }
 }
 
