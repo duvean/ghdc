@@ -20,6 +20,7 @@ std::string nodeTypeToString(NodeType type) {
         case NODE_PROGRAM:              return "PROGRAM";
         case DECL_VAR:                  return "VAR_DECL";
         case DECL_FUNC:                 return "FUNC_DECL";
+        case DECL_FUNC_SIGN:            return "FUNC_SIGNATURE";
         case DECL_DATA:                 return "DATA_DECL";
         case DECL_TYPE:                 return "TYPE_ALIAS_DECL";
         case DECL_CONSTRUCTOR:          return "DATA_CONSTRUCTOR";
@@ -56,6 +57,7 @@ std::string nodeTypeToString(NodeType type) {
         case EXPR_TYPE_VAR:             return "TYPE_VAR"; // a, b
         case EXPR_TYPE_FUNCTION:        return "TYPE_FUNCTION"; // A -> B
         case EXPR_TYPE_ANNOTATION:      return "TYPE_ANNOTATION"; // expr :: type
+        case EXPR_TYPE_LIST:            return "TYPE_LIST"; // [type_expr]
         
         // --- Ветки Case/Alternative ---
         case EXPR_CASE_BRANCH:          return "CASE_BRANCH";
@@ -194,7 +196,7 @@ DeclNode* DeclNode::createFuncDef(const std::string& name,
 }
 
 DeclNode* DeclNode::createFuncSignature(const std::string& name, ASTNode* typeExpr) {
-    DeclNode* node = new DeclNode(NodeType::DECL_TYPE); 
+    DeclNode* node = new DeclNode(NodeType::DECL_FUNC_SIGN); 
     
     node->name = name;
     node->typeExpr = typeExpr;
@@ -655,6 +657,14 @@ ExprNode* ExprNode::createPrimitiveType(const std::string& name) {
     ExprNode* node = new ExprNode(NodeType::EXPR_TYPE_PRIMITIVE);
     node->value = name;
     std::cout << "createPrimitiveType(" << name << ")\n";
+    return node;
+}
+
+ExprNode* ExprNode::createListType(ExprNode* elementType) {
+    // Используем конструктор типа (Type Constructor), но специально для списка
+    ExprNode* node = new ExprNode(NodeType::EXPR_TYPE_LIST); // Или новый тип, например, EXPR_TYPE_LIST
+    node->name = "[]"; // Имя конструктора
+    node->right = elementType; // Храним тип элемента списка (Int в [Int])
     return node;
 }
 

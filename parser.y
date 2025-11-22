@@ -168,8 +168,9 @@ type_expr:
     | KW_BOOL                 { $$ = ExprNode::createPrimitiveType("Bool"); }
     | ID_CAP                  { $$ = ExprNode::createTypeConstructor($1); } // Maybe, List
     | ID                      { $$ = ExprNode::createTypeVar($1); } // a, b (переменная типа)
-    | type_expr RIGHT_ARROW type_expr  { $$ = ExprNode::createFunctionType($1, $3); } // Функциональный тип (->)
-    | LEFT_PAREN type_expr RIGHT_PAREN { $$ = $2; } // Группировка
+    | type_expr RIGHT_ARROW type_expr      { $$ = ExprNode::createFunctionType($1, $3); } // Функциональный тип (->)
+    | LEFT_PAREN type_expr RIGHT_PAREN     { $$ = $2; } // Группировка
+    | LEFT_BRACKET type_expr RIGHT_BRACKET { $$ = ExprNode::createListType($2); }
     ;
 
 /* --- Определение типа данных --- */
