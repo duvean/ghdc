@@ -2264,6 +2264,20 @@ yyreduce:
     { (yyval.expr) = ExprNode::addArgumentToConstructor((yyvsp[(1) - (2)].expr), (yyvsp[(2) - (2)].expr)); ;}
     break;
 
+  case 102:
+
+/* Line 1455 of yacc.c  */
+#line 343 "parser.y"
+    { (yyval.expr) = (yyvsp[(1) - (1)].expr); ;}
+    break;
+
+  case 103:
+
+/* Line 1455 of yacc.c  */
+#line 344 "parser.y"
+    { (yyval.expr) = (yyvsp[(1) - (1)].expr); ;}
+    break;
+
   case 104:
 
 /* Line 1455 of yacc.c  */
@@ -2344,7 +2358,7 @@ yyreduce:
 
 
 /* Line 1455 of yacc.c  */
-#line 2348 "parser.tab.c"
+#line 2362 "parser.tab.c"
       default: break;
     }
   YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyn], &yyval, &yyloc);

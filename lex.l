@@ -500,7 +500,7 @@ int get_next_token(void) {
     if(!token_queue.empty()) {
         Token t = token_queue.front();
         token_queue.pop_front();
-        yylval.str = strdup(t.text.c_str()); 
+        yylval.str = _strdup(t.text.c_str()); 
         printf("Parser reads token: %d ('%s')\n", t.type, t.text.c_str());
         return(t.type);
     }
