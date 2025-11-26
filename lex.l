@@ -11,6 +11,7 @@
 
 using namespace std;
 
+int last_pushed_token_type;
 void push_token(int type, const string& text);
 void lexical_error(const char* message, const char* value);
 int count_last_line_indent(const char* text); 
@@ -45,9 +46,9 @@ int comment_nest_level = 0;  // для отслеживания вложенно
 bool char_processed = false; // для отслеживания обработки char
 vector<int> layout_stack = {0};   // стек с количествами отступов  
 bool indent_process_flag = false; // флаг обработки отступов в блоках
-int first_indent = 0;		 // количество отступов первой строки
-bool first_line_flag = true; // флаг необходимости обработки первой строки отдельно
-int brace_count = 0;		 // счетчик для баланса фигурных скобок
+int first_indent = 0;		          // количество отступов первой строки
+bool first_line_flag = true;      // флаг необходимости обработки первой строки отдельно
+int brace_count = 0;		          // счетчик для баланса фигурных скобок
 bool first_block_indent_flag = false;
 bool custom_indents_in_block_flag = false; // флаг пропуска блока с пользовательскими отступами
 %}
@@ -83,14 +84,14 @@ bool custom_indents_in_block_flag = false; // флаг пропуска блок
 <COMMENT>{
   \n            { 
 				  yyless(0);
-                  push_token(SINGLELINE_COMMENT, comment_buffer);
+                  //push_token(SINGLELINE_COMMENT, comment_buffer);
                   BEGIN(INITIAL); 
                 }
   .+            { 
                   comment_buffer += yytext;
                 }
   <<EOF>>       {
-                  push_token(SINGLELINE_COMMENT, comment_buffer);
+                  //push_token(SINGLELINE_COMMENT, comment_buffer);
                   BEGIN(INITIAL);
                 }
 }
@@ -123,8 +124,6 @@ bool custom_indents_in_block_flag = false; // флаг пропуска блок
 "<-"           { push_token(LEFT_ARROW, yytext); }
 "=>"           { push_token(FAT_ARROW, yytext); }
 "::"           { push_token(DOUBLE_COLON, yytext); }
-"++"           { push_token(DOUBLE_PLUS, yytext); }
-".."           { push_token(DOUBLE_DOT, yytext); }
 "=="           { push_token(DOUBLE_EQUALS, yytext); }
 "/="           { push_token(NOT_EQUALS, yytext); }
 "<="           { push_token(LESS_EQUAL, yytext); }
@@ -132,11 +131,6 @@ bool custom_indents_in_block_flag = false; // флаг пропуска блок
 "&&"           { push_token(DOUBLE_AMPERSAND, yytext); }
 "||"           { push_token(DOUBLE_PIPE, yytext); }
 "!!"           { push_token(DOUBLE_BANG, yytext); }
-".&."          { push_token(DOT_AMPERSAND_DOT, yytext); }
-".|."          { push_token(DOT_PIPE_DOT, yytext); }
-">>="          { push_token(DOUBLE_GREATER_EQUAL, yytext); }
-">>"           { push_token(DOUBLE_GREATER, yytext); }
-"=<<"          { push_token(EQUAL_DOUBLE_LESS, yytext); }
 "^^"           { push_token(DOUBLE_CARET, yytext); }
 "**"           { push_token(DOUBLE_ASTERISK, yytext); }
 "$"            { push_token(DOLLAR, yytext); }
@@ -145,8 +139,6 @@ bool custom_indents_in_block_flag = false; // флаг пропуска блок
 "="            { push_token(EQUALS, yytext); }
 "\\"           { push_token(BACKSLASH, yytext); }
 "|"            { push_token(PIPE, yytext); }
-"@"            { push_token(AT_SIGN, yytext); }
-"~"            { push_token(TILDE, yytext); }
 "+"            { push_token(PLUS, yytext); }
 "-"            { push_token(MINUS, yytext); }
 "*"            { push_token(ASTERISK, yytext); }
@@ -154,9 +146,6 @@ bool custom_indents_in_block_flag = false; // флаг пропуска блок
 "^"            { push_token(CARET, yytext); }
 "<"            { push_token(LESS, yytext); }
 ">"            { push_token(GREATER, yytext); }
-"!"            { push_token(BANG, yytext); }
-"&"            { push_token(AMPERSAND, yytext); }
-"%"            { push_token(PERCENT, yytext); }
 
 "let"          { push_token(KW_LET, yytext); BEGIN(AFTER_KEYWORD);}
 "where"        { push_token(KW_WHERE, yytext); BEGIN(AFTER_KEYWORD);}
@@ -207,8 +196,6 @@ bool custom_indents_in_block_flag = false; // флаг пропуска блок
            }
 }		   	   
 
-
-"default"	     { push_token(KW_DEFAULT, yytext); }
 "in"           { push_token(KW_IN, yytext); }
 "return"       { push_token(KW_RETURN, yytext); }
 "case"         { push_token(KW_CASE, yytext); }
@@ -216,27 +203,9 @@ bool custom_indents_in_block_flag = false; // флаг пропуска блок
 "then"         { push_token(KW_THEN, yytext); }
 "else"         { push_token(KW_ELSE, yytext); }
 "data"         { push_token(KW_DATA, yytext); }
-"type"         { push_token(KW_TYPE, yytext); }
-"class"        { push_token(KW_CLASS, yytext); }
-"instance"     { push_token(KW_INSTANCE, yytext); }
-"deriving"     { push_token(KW_DERIVING, yytext); }
-"import"       { push_token(KW_IMPORT, yytext); }
-"module"       { push_token(KW_MODULE, yytext); }
-"foreign"      { push_token(KW_FOREIGN, yytext); }
-"infixl"       { push_token(KW_INFIXL, yytext); }
-"infixr"       { push_token(KW_INFIXR, yytext); }
-"infix"        { push_token(KW_INFIX, yytext); }
-"as"           { push_token(KW_AS, yytext); }
-"hiding"       { push_token(KW_HIDING, yytext); }
-"qualified"    { push_token(KW_QUALIFIED, yytext); }
-"newtype"      { push_token(KW_NEWTYPE, yytext); }
-"export"	     { push_token(KW_EXPORT, yytext); }
-"ccall"        { push_token(KW_CCALL, yytext); }
-"print"        { push_token(KW_PRINT, yytext); }
-"getLine"      { push_token(KW_GETLINE, yytext); }
 
 "Int"          { push_token(KW_INT, yytext); }
-"Integer"      { push_token(KW_INTEGER, yytext); }
+"Integer"      { push_token(KW_INT, yytext); }
 "Char"         { push_token(KW_CHAR, yytext); }
 "String"       { push_token(KW_STRING, yytext); }
 "Float"        { push_token(KW_FLOAT, yytext); }
@@ -260,10 +229,7 @@ bool custom_indents_in_block_flag = false; // флаг пропуска блок
                  push_token(RIGHT_BRACE, yytext);
                }
 ","            { push_token(COMMA, yytext); }
-";"            { push_token(SEMICOLON, yytext); }
-"`"            { push_token(BACKTICK, yytext); }
-
-{OPERATOR}+    { push_token(OPERATOR, yytext); }
+";"            { if (last_pushed_token_type != SEMICOLON) push_token(SEMICOLON, yytext); }
 
 {ID_START}({LETTER}|{DEC}|_|')*   { push_token(ID, yytext); }
 {CAPITAL}({LETTER}|{DEC}|_|')*    { push_token(ID_CAP, yytext); }
@@ -384,6 +350,7 @@ bool custom_indents_in_block_flag = false; // флаг пропуска блок
 void push_token(int type, const string& text) {
     cout << "Pushed token: " << type << " -> '" << text << "'" << endl;
     token_queue.push_back({type, text});
+    last_pushed_token_type = type;
 }
 
 void lexical_error(const char* message, const char* value) {
@@ -391,13 +358,16 @@ void lexical_error(const char* message, const char* value) {
 }
 
 void place_semicolons(const char* line_text, int first_indent, bool end_of_file_flag) {
-	int current_indent = count_last_line_indent(line_text);
-	if (current_indent == first_indent) {
-		// Тот же отступ - разделитель выражений
-		push_token(SEMICOLON, ";");
-	} else if (current_indent < first_indent && !end_of_file_flag) {
-		lexical_error("Indentation without context", line_text);
-	}
+    int current_indent = count_last_line_indent(line_text);
+
+    if(current_indent == first_indent) {
+        if (last_pushed_token_type != SEMICOLON) {
+            push_token(SEMICOLON, ";");
+        }
+    } 
+    else if(current_indent < first_indent && !end_of_file_flag) {
+        lexical_error("Indentation without context", line_text);
+    }
 }
 
 int count_last_line_indent(const char* text) {
@@ -449,14 +419,14 @@ bool process_indentation(const char* line_text, vector<int>& layout_stack, bool 
 	int last_indent = first_block_indent_flag ? *(layout_stack.rbegin() + 1) : layout_stack.back();
 	if(first_block_indent_flag)
 	{
-		if(current_indent == last_indent && !end_of_file_flag){
-			push_token(SEMICOLON, ";");
+		if(current_indent == last_indent && !end_of_file_flag) {
+			if(last_pushed_token_type != SEMICOLON) push_token(SEMICOLON, ";");
 			push_token(RIGHT_BRACE, "}");
 			layout_stack.pop_back();
 		}
 		else if(current_indent <= last_indent && end_of_file_flag)
 		{
-			push_token(SEMICOLON, ";");
+			if(last_pushed_token_type != SEMICOLON) push_token(SEMICOLON, ";");
 			while (layout_stack.size() > 1 && current_indent <= last_indent) 
 			{
 				layout_stack.pop_back();
@@ -466,8 +436,8 @@ bool process_indentation(const char* line_text, vector<int>& layout_stack, bool 
 		}
 		else if(!token_queue.empty() && current_indent > last_indent)
 		{
-			if (token_queue.back().type != LEFT_BRACE){
-				push_token(SEMICOLON, ";");
+			if(token_queue.back().type != LEFT_BRACE) {
+				if(last_pushed_token_type != SEMICOLON) push_token(SEMICOLON, ";");
 			}
 		}
 	}
@@ -475,7 +445,7 @@ bool process_indentation(const char* line_text, vector<int>& layout_stack, bool 
 	{
 		if(current_indent == last_indent)
 		{
-			push_token(SEMICOLON, ";");
+			if(last_pushed_token_type != SEMICOLON) push_token(SEMICOLON, ";");
 		}
 		else if(current_indent > last_indent)
 		{
@@ -483,8 +453,8 @@ bool process_indentation(const char* line_text, vector<int>& layout_stack, bool 
 		}
 		else if(current_indent < last_indent || end_of_file_flag)
 		{
-			push_token(SEMICOLON, ";");
-			while (layout_stack.size() > 1 && current_indent < last_indent) 
+			if(last_pushed_token_type != SEMICOLON) push_token(SEMICOLON, ";");
+			while(layout_stack.size() > 1 && current_indent < last_indent) 
 			{
 				layout_stack.pop_back();
 				push_token(RIGHT_BRACE, "}");
@@ -492,15 +462,27 @@ bool process_indentation(const char* line_text, vector<int>& layout_stack, bool 
 			}
 		}
 	}
-
-	return (layout_stack.size() > 1);
+	return(layout_stack.size() > 1);
 }
 
 int get_next_token(void) {
+    const int SEMICOLON_TYPE = 281;
+
+    if(!token_queue.empty()) {
+        if (token_queue.front().type == SEMICOLON_TYPE) {    
+            auto it = token_queue.begin() + 1; 
+            while (it != token_queue.end() && it->type == SEMICOLON_TYPE) {
+                it = token_queue.erase(it);
+            }
+        }
+    }
+
     if(!token_queue.empty()) {
         Token t = token_queue.front();
         token_queue.pop_front();
+        
         yylval.str = _strdup(t.text.c_str()); 
+        
         printf("Parser reads token: %d ('%s')\n", t.type, t.text.c_str());
         return(t.type);
     }
@@ -513,13 +495,15 @@ int get_next_token(void) {
     
     if(flex_result == 0) {
         if (token_queue.empty()) {
-            return 0;
+            return(0);
         }
         return(get_next_token());
     }
+
     if(!token_queue.empty()) {
         return(get_next_token());
     }
+
     print_token_queue();
     return(flex_result); 
 }

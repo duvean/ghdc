@@ -24,8 +24,8 @@ int main(int argc, char** argv) {
         return(1);
     }
 
-    int parse_result = yyparse();
-
+    int parse_result = yyparse();                                                                                                                                                                                                            
+                                                                                                                                                                                                                  
     if(root) {
         std::string dot_code = "digraph AST {\n" + root->toDotString() + "}\n";
         std::ofstream dot_file("ast.dot");
