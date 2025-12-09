@@ -136,7 +136,7 @@ binding_list_opt:
 
 binding:
       ID EQUALS expr semicolon_opt { $$ = DeclNode::createVarDecl($1, $3); }
-      // если будут беды со свёрткой decl->decl_list поменять на SEMICOLON
+    | ID LEFT_ARROW expr semicolon_opt { $$ = DeclNode::createMonadicBind($1, $3); }
     ;
 
 /* --- Объявление функции --- */

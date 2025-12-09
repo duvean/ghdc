@@ -25,6 +25,7 @@ std::string nodeTypeToString(NodeType type) {
         case DECL_TYPE:                 return "TYPE_ALIAS_DECL";
         case DECL_CONSTRUCTOR:          return "DATA_CONSTRUCTOR";
         case DECL_LIST:                 return "DECL_LIST";
+        case DECL_MONADIC_BIND:         return "MONADIC_BIND";
         case DECL_BLOCK:                return "DECL_BLOCK"; // Блок объявлений (напр., 'where' или 'let')
         
         // --- Выражения (Expressions) ---
@@ -165,6 +166,17 @@ DeclNode* DeclNode::createVarDecl(const std::string& name, ExprNode* expr) {
     node->expr = expr;
     
     std::cout << "createVarDecl(" << name << ") -> Expression: " 
+              << (expr ? "present" : "NULL") << "\n";
+    return node;
+}
+
+DeclNode* DeclNode::createMonadicBind(const std::string& name, ExprNode* expr) {
+    DeclNode* node = new DeclNode(NodeType::DECL_MONADIC_BIND); 
+    
+    node->name = name;
+    node->expr = expr;
+    
+    std::cout << "createMonadicBind(" << name << ") -> Expression: " 
               << (expr ? "present" : "NULL") << "\n";
     return node;
 }

@@ -13,6 +13,7 @@ enum NodeType {
     DECL_TYPE,
     DECL_LIST,
     DECL_BLOCK,
+    DECL_MONADIC_BIND,
     EXPR_LITERAL,
     EXPR_VAR,
     EXPR_BINARY,
@@ -79,6 +80,7 @@ public:
     static DeclNode* createFuncSignature(const std::string& name, ASTNode* typeExpr);
 	static DeclNode* createDataDecl(const std::string& name, ASTNode* constructors);
     static DeclNode* createTypeDecl(const std::string& name, ASTNode* typeExpr);
+    static DeclNode* createMonadicBind(const std::string& name, ExprNode* expr);
     static DeclNode* createParameter(ExprNode* patternNode);
     static DeclNode* createLetBlock(DeclListNode* declList);
 
