@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <sstream>
+#include "jvm_spec.h"
 
 enum NodeType {
     NODE_PROGRAM,
@@ -42,7 +43,8 @@ enum NodeType {
     EXPR_TYPE_FUNCTION,
     EXPR_TYPE_ANNOTATION,
     EXPR_CASE_BRANCH,
-    EXPR_CASE_BRANCH_LIST
+    EXPR_CASE_BRANCH_LIST,
+    EXPR_CASTING
 };
 
 std::string nodeTypeToString(NodeType type);
@@ -57,6 +59,12 @@ public:
 
     virtual std::string toDotString() const = 0; 
     virtual std::string getDotLabel() const = 0; 
+
+    // --- Семантические атрибуты ---
+    SemanticType inferredType = SemanticType::Unknown;
+    int constPoolIndex = 0;
+    int localVarIndex = -1;
+    bool isCastNode = false;
 
     ASTNode(NodeType t) : type(t), nodeId(nextNodeId++) {}
     virtual ~ASTNode() = default;

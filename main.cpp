@@ -6,6 +6,8 @@
 #include <string>
 #include <sstream>
 #include "parser.tab.h"
+#include "constant_pool.h"
+#include "semantic_analyzer.h"
 
 extern int yyparse();
 extern FILE* yyin;
@@ -27,6 +29,29 @@ int main(int argc, char** argv) {
     int parse_result = yyparse();                                                                                                                                                                                                            
                                                                                                                                                                                                                   
     if(root) {
+        // --- СЕМАНТИЧЕСКИЙ АНАЛИЗ ---
+        std::cout << "--- Semantic Analysis Start ---\n";
+        
+        ConstantPool constPool;
+        SemanticAnalyzer analyzer(constPool);
+        
+        analyzer.analyze(root);
+        
+        std::cout << "--- Semantic Analysis Done ---\n";
+        
+        // Вывод таблицы констант для проверки
+        std::cout << "Constant Pool Dump:\n";
+        const auto& entries = constPool.getEntries();
+        for (size_t i = 1; i < entries.size(); ++i) {
+            std::cout << "#" << i << " Tag: " << entries[i].tag << " ";
+            if (entries[i].tag == CONSTANT_Utf8) std::cout << "Utf8: " << entries[i].stringValue;
+            else if (entries[i].tag == CONSTANT_Integer) std::cout << "Int: " << entries[i].intValue;
+            else if (entries[i].tag == CONSTANT_Float) std::cout << "Float: " << entries[i].floatValue;
+            else if (entries[i].tag == CONSTANT_String) std::cout << "String Ref -> #" << entries[i].refIndex1;
+            std::cout << "\n";
+        }
+        // -------------------------------------
+
         std::string dot_code = "digraph AST {\n" + root->toDotString() + "}\n";
         std::ofstream dot_file("ast.dot");
 

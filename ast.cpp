@@ -790,11 +790,20 @@ ExprNode* ExprNode::addCaseBranchToList(ExprNode* list, ExprNode* newBranch) {
 
 std::string ExprNode::getDotLabel() const {
     std::stringstream ss;
-    ss << nodeTypeToString(type); // EXPR_LITERAL, EXPR_BINARY, etc.
+    ss << nodeTypeToString(type);
     
     if (!op.empty()) ss << "\\nOp: " << op;
     if (!value.empty()) ss << "\\nValue: " << value;
     if (!name.empty()) ss << "\\nName: " << name;
+
+    if (inferredType != SemanticType::Unknown) 
+         ss << "\\nType: " << typeToString(inferredType);
+    if (constPoolIndex > 0)
+         ss << "\\nCPIdx: #" << constPoolIndex;
+    if (localVarIndex != -1)
+         ss << "\\nLocVar: " << localVarIndex;
+    if (type == EXPR_CASTING)
+         ss << "\\n(Implicit Cast)";
 
     return ss.str();
 }
@@ -846,6 +855,11 @@ std::string ExprNode::toDotString() const {
         }
     }
 
+    if (type == EXPR_CASTING && left) {
+        ss << "node" << nodeId << " -> node" << left->nodeId << ";\n";
+        ss << left->toDotString();
+    }
+    
     if (decls) {
         // Связь с функцией (предыдущим вызовом или именем функции)
         ss << "    " << nodeId << " -> " << decls->nodeId << " [label=\"Do Block\"];\n";
