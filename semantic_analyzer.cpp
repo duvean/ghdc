@@ -27,19 +27,20 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
             // 2. Регистрируем переменную
             LocalVariable varInfo;
             varInfo.index = nextLocalIndex++;
-            varInfo.type = node->expr->inferredType; // Теперь это копирование указателя (SemanticType*)
+            varInfo.type = node->expr->inferredType;
 
-            symbolTable[node->name] = varInfo;
+            SemanticType* type = node->expr->inferredType;
+            symbolTable[node->name] = LocalVariable(type, nextLocalIndex++);
 
             // 3. Атрибутируем узел
-            node->localVarIndex = varInfo.index;
-            node->inferredType = SemanticType::Void(); // Фабричный метод
+            if (dynamic_cast<ASTNode*>(node)) node->inferredType = type;
 
             std::cout << "[Semantic] Declared var '" << node->name
                 << "' index=" << varInfo.index
                 << " type=" << (varInfo.type ? varInfo.type->getDescriptor() : "?") << "\n";
         }
     }
+    
     // 2. Обработка заголовков функций
     else if (node->type == DECL_FUNC_SIGN) {
         std::vector<SemanticType*> allTypes;
@@ -97,9 +98,25 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
     }
 
     // 4. Обработка Let-блоков
-    else if (node->type == DECL_BLOCK) {
-        DeclListNode* list = dynamic_cast<DeclListNode*>(node->letBlock);
-        if (list) analyzeDeclList(list);
+    else if (node->type == DECL_BLOCK && node->name == "LET_BLOCK") {
+        // В DeclNode список let-переменных лежит в letBlock (ASTNode*, кастим)
+        if (node->letBlock) {
+            auto* list = dynamic_cast<DeclListNode*>(node->letBlock);
+            if (list) {
+                for (auto* varDecl : list->decls) {
+                    analyzeDecl(varDecl);
+                }
+            }
+        }
+    }
+
+    else if (node->type == DECL_ACTION) {
+        // У DeclNode есть поле expr (само выражение вызова функции)
+        if (node->expr) {
+            analyzeExpr(node->expr);
+            // Тип действия совпадает с типом выражения
+            if (dynamic_cast<ASTNode*>(node)) node->inferredType = node->expr->inferredType;
+        }
     }
 }
 
@@ -318,6 +335,16 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
         break;
     }
 
+    case EXPR_DO_BLOCK: {
+        if (node->decls) {
+            for (auto* decl : node->decls->decls) {
+                analyzeDecl(decl);
+            }
+        }
+        node->inferredType = SemanticType::IO();
+        break;
+    }
+
     case EXPR_CASTING:
         // Cast node уже имеет явно заданный тип при создании
         // (см. createCastNode)
@@ -335,7 +362,7 @@ void SemanticAnalyzer::analyzePattern(ExprNode* pattern, SemanticType* expectedT
 
     if (pattern->type == EXPR_PATTERN_VAR) {
         // Устанавливаем тип и индекс для переменной в таблице
-        symbolTable[pattern->name] = { sourceLocalIndex, expectedType };
+        symbolTable[pattern->name] = LocalVariable(expectedType, sourceLocalIndex);
         pattern->inferredType = expectedType;
         pattern->localVarIndex = sourceLocalIndex;
     }

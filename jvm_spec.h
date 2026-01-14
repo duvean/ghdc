@@ -1,8 +1,8 @@
 #pragma once
 #include <string>
 
-enum class TypeKind { PRIMITIVE, LIST, FUNCTION, UNKNOWN };
-enum class BaseType { INT, FLOAT, BOOL, STRING, VOID };
+enum class TypeKind { PRIMITIVE, LIST, FUNCTION, CONSTRUCTOR, UNKNOWN };
+enum class BaseType { INT, FLOAT, BOOL, STRING, VOID, IO };
 
 enum JvmConstantTag {
     CONSTANT_Utf8 = 1,
@@ -20,12 +20,14 @@ public:
     TypeKind kind;
     BaseType base;           // Для примитивов
     SemanticType* subType;   // Для списков (тип элементов)
+    std::string typeName;    // Для монад
 
     // Для функций:
     std::vector<SemanticType*> paramTypes;
     SemanticType* returnType;
 
     SemanticType(BaseType b) : kind(TypeKind::PRIMITIVE), base(b), subType(nullptr) {}
+    SemanticType(TypeKind k) : kind(k), base(BaseType::VOID), subType(nullptr), returnType(nullptr) {}
     SemanticType(TypeKind k, SemanticType* sub) : kind(k), base(BaseType::VOID), subType(sub) {}
     SemanticType() : kind(TypeKind::UNKNOWN), base(BaseType::VOID), subType(nullptr) {}
     SemanticType(std::vector<SemanticType*> params, SemanticType* ret) 
@@ -43,6 +45,11 @@ public:
     }
     static SemanticType* Function(std::vector<SemanticType*> params, SemanticType* ret) {
         return new SemanticType(params, ret);
+    }
+    static SemanticType* IO() {
+        SemanticType* t = new SemanticType(TypeKind::CONSTRUCTOR);
+        t->typeName = "IO"; 
+        return t;
     }
     
     bool equals(SemanticType* other) {

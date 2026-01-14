@@ -8,6 +8,7 @@
 struct LocalVariable {
     int index;
     SemanticType* type;
+    LocalVariable(SemanticType* t = nullptr, int i = -1) : type(t), index(i) {}
 };
 
 struct FunctionSignature {
