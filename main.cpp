@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
         // -------------------------------------
 
         std::string dot_code = "digraph AST {\n" + root->toDotString() + "}\n";
-        std::ofstream dot_file("ast.dot");
+        std::ofstream dot_file("output/ast.dot");
 
         if(dot_file.is_open()) {
             dot_file << dot_code;
@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
             }
         }
         else {
-            std::cerr << "Error: cannot create ast.dot\n";
+            std::cerr << "Error: cannot create output/ast.dot\n";
         }
     }
     else {

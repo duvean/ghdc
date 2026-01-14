@@ -61,7 +61,7 @@ public:
     virtual std::string getDotLabel() const = 0; 
 
     // --- Семантические атрибуты ---
-    SemanticType inferredType = SemanticType::Unknown;
+    SemanticType* inferredType = SemanticType::Unknown();
     int constPoolIndex = 0;
     int localVarIndex = -1;
     bool isCastNode = false;

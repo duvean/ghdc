@@ -1,28 +1,8 @@
 #pragma once
 #include <string>
 
-enum class SemanticType {
-    Void,
-    Int,
-    Float,
-    Bool,
-    Char,
-    String,
-    List,   
-    Unknown
-};
-
-inline std::string typeToString(SemanticType t) {
-    switch(t) {
-        case SemanticType::Int:    return "Int";
-        case SemanticType::Float:  return "Float";
-        case SemanticType::Bool:   return "Bool";
-        case SemanticType::String: return "String";
-        case SemanticType::Void:   return "Void";
-        case SemanticType::List:   return "[List]";
-        default:                   return "Unknown";
-    }
-}
+enum class TypeKind { PRIMITIVE, LIST, UNKNOWN };
+enum class BaseType { INT, FLOAT, BOOL, STRING, VOID };
 
 enum JvmConstantTag {
     CONSTANT_Utf8 = 1,
@@ -35,17 +15,60 @@ enum JvmConstantTag {
     CONSTANT_NameAndType = 12
 };
 
-inline std::string getJvmDescriptor(SemanticType type, SemanticType elementType = SemanticType::Unknown) {
-    switch (type) {
-        case SemanticType::Int:    return "I";
-        case SemanticType::Float:  return "F";
-        case SemanticType::Bool:   return "Z";
-        case SemanticType::String: return "Ljava/lang/String;";
-        case SemanticType::List: {
-            if (elementType == SemanticType::Float) return "[F";
-            if (elementType == SemanticType::Bool)  return "[Z";
-            return "[I";
-        }
-        default: return "V";
+class SemanticType {
+public:
+    TypeKind kind;
+    BaseType base;
+    SemanticType* subType;
+
+    SemanticType(BaseType b) : kind(TypeKind::PRIMITIVE), base(b), subType(nullptr) {}
+    SemanticType(TypeKind k, SemanticType* sub) : kind(k), base(BaseType::VOID), subType(sub) {}
+    SemanticType() : kind(TypeKind::UNKNOWN), base(BaseType::VOID), subType(nullptr) {}
+
+    static SemanticType* Int()     { return new SemanticType(BaseType::INT); }
+    static SemanticType* Float()   { return new SemanticType(BaseType::FLOAT); }
+    static SemanticType* Bool()    { return new SemanticType(BaseType::BOOL); }
+    static SemanticType* String()  { return new SemanticType(BaseType::STRING); }
+    static SemanticType* Void()    { return new SemanticType(BaseType::VOID); }
+    static SemanticType* Unknown() { return new SemanticType(); }
+    static SemanticType* List(SemanticType* inner) {
+        return new SemanticType(TypeKind::LIST, inner);
     }
-}
+    
+    bool equals(SemanticType* other) {
+        if (!other) return false;
+        if (kind != other->kind) return false;
+        if (kind == TypeKind::PRIMITIVE) return base == other->base;
+        if (kind == TypeKind::LIST) return subType->equals(other->subType);
+        return true;
+    }
+
+    std::string getDescriptor() {
+        if (kind == TypeKind::PRIMITIVE) {
+            switch (base) {
+            case BaseType::INT:    return "I";
+            case BaseType::FLOAT:  return "F";
+            case BaseType::BOOL:   return "Z";
+            case BaseType::STRING: return "Ljava/lang/String;";
+            default:               return "V";
+            }
+        }
+        if (kind == TypeKind::LIST) {
+            return "[" + subType->getDescriptor();
+        }
+        if (kind == TypeKind::UNKNOWN) return "V";
+        return "V";
+    }
+
+    std::string toString() {
+        if (kind == TypeKind::UNKNOWN) return "?";
+        if (kind == TypeKind::LIST) return "[" + subType->toString();
+        if (kind == TypeKind::PRIMITIVE) {
+            if (base == BaseType::INT) return "Int";
+            if (base == BaseType::FLOAT) return "Float";
+            if (base == BaseType::BOOL) return "Bool";
+            if (base == BaseType::STRING) return "String";
+        }
+        return getDescriptor();
+    }
+};

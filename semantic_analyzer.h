@@ -7,12 +7,12 @@
 
 struct LocalVariable {
     int index;
-    SemanticType type;
+    SemanticType* type;
 };
 
 struct FunctionSignature {
-    std::vector<SemanticType> paramTypes;
-    SemanticType returnType;
+    std::vector<SemanticType*> paramTypes;
+    SemanticType* returnType;
 };
 
 class SemanticAnalyzer {
@@ -34,10 +34,10 @@ private:
     void analyzeDeclList(DeclListNode* list);
     void analyzeDecl(DeclNode* node);
     void analyzeExpr(ExprNode* node);
-    void analyzePattern(ExprNode* pattern, SemanticType type, int sourceLocalIndex);
+    void analyzePattern(ExprNode* pattern, SemanticType* expectedType, int sourceLocalIndex);
 
     std::string makeMethodDescriptor(DeclNode* funcNode);
-    void collectTypes(ASTNode* node, std::vector<SemanticType>& types);
+    void collectTypes(ASTNode* node, std::vector<SemanticType*>& types);
 
-    ExprNode* createCastNode(ExprNode* target, SemanticType toType);
+    ExprNode* createCastNode(ExprNode* target, SemanticType* toType);
 };

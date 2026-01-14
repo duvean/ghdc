@@ -791,19 +791,24 @@ ExprNode* ExprNode::addCaseBranchToList(ExprNode* list, ExprNode* newBranch) {
 std::string ExprNode::getDotLabel() const {
     std::stringstream ss;
     ss << nodeTypeToString(type);
-    
+
     if (!op.empty()) ss << "\\nOp: " << op;
     if (!value.empty()) ss << "\\nValue: " << value;
     if (!name.empty()) ss << "\\nName: " << name;
 
-    if (inferredType != SemanticType::Unknown) 
-         ss << "\\nType: " << typeToString(inferredType);
+    // Проверяем, что тип определен и он не является Unknown
+    if (inferredType != nullptr && !inferredType->equals(SemanticType::Unknown())) {
+        ss << "\\nType: " << inferredType->toString();
+    }
+
     if (constPoolIndex > 0)
-         ss << "\\nCPIdx: #" << constPoolIndex;
+        ss << "\\nCPIdx: #" << constPoolIndex;
+
     if (localVarIndex != -1)
-         ss << "\\nLocVar: " << localVarIndex;
+        ss << "\\nLocVar: " << localVarIndex;
+
     if (type == EXPR_CASTING)
-         ss << "\\n(Implicit Cast)";
+        ss << "\\n(Implicit Cast)";
 
     return ss.str();
 }
