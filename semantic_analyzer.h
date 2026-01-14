@@ -37,8 +37,8 @@ private:
     void analyzeExpr(ExprNode* node);
     void analyzePattern(ExprNode* pattern, SemanticType* expectedType, int sourceLocalIndex);
 
-    std::string makeMethodDescriptor(DeclNode* funcNode);
     void collectTypes(ASTNode* node, std::vector<SemanticType*>& types);
+    void flattenCall(ExprNode* node, std::vector<ExprNode*>& args, ExprNode** finalFunc);
     
     ExprNode* createCastNode(ExprNode* target, SemanticType* toType);
 };

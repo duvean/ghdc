@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 
-enum class TypeKind { PRIMITIVE, LIST, UNKNOWN };
+enum class TypeKind { PRIMITIVE, LIST, FUNCTION, UNKNOWN };
 enum class BaseType { INT, FLOAT, BOOL, STRING, VOID };
 
 enum JvmConstantTag {
@@ -18,12 +18,19 @@ enum JvmConstantTag {
 class SemanticType {
 public:
     TypeKind kind;
-    BaseType base;
-    SemanticType* subType;
+    BaseType base;           // Для примитивов
+    SemanticType* subType;   // Для списков (тип элементов)
+
+    // Для функций:
+    std::vector<SemanticType*> paramTypes;
+    SemanticType* returnType;
 
     SemanticType(BaseType b) : kind(TypeKind::PRIMITIVE), base(b), subType(nullptr) {}
     SemanticType(TypeKind k, SemanticType* sub) : kind(k), base(BaseType::VOID), subType(sub) {}
     SemanticType() : kind(TypeKind::UNKNOWN), base(BaseType::VOID), subType(nullptr) {}
+    SemanticType(std::vector<SemanticType*> params, SemanticType* ret) 
+        : kind(TypeKind::FUNCTION), base(BaseType::VOID), 
+          subType(nullptr), paramTypes(params), returnType(ret) {}
 
     static SemanticType* Int()     { return new SemanticType(BaseType::INT); }
     static SemanticType* Float()   { return new SemanticType(BaseType::FLOAT); }
@@ -34,12 +41,21 @@ public:
     static SemanticType* List(SemanticType* inner) {
         return new SemanticType(TypeKind::LIST, inner);
     }
+    static SemanticType* Function(std::vector<SemanticType*> params, SemanticType* ret) {
+        return new SemanticType(params, ret);
+    }
     
     bool equals(SemanticType* other) {
-        if (!other) return false;
-        if (kind != other->kind) return false;
+        if (!other || kind != other->kind) return false;
         if (kind == TypeKind::PRIMITIVE) return base == other->base;
         if (kind == TypeKind::LIST) return subType->equals(other->subType);
+        if (kind == TypeKind::FUNCTION) {
+            if (paramTypes.size() != other->paramTypes.size()) return false;
+            for (size_t i = 0; i < paramTypes.size(); ++i) {
+                if (!paramTypes[i]->equals(other->paramTypes[i])) return false;
+            }
+            return returnType->equals(other->returnType);
+        }
         return true;
     }
 

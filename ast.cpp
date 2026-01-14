@@ -798,7 +798,12 @@ std::string ExprNode::getDotLabel() const {
 
     // Проверяем, что тип определен и он не является Unknown
     if (inferredType != nullptr && !inferredType->equals(SemanticType::Unknown())) {
-        ss << "\\nType: " << inferredType->toString();
+        if (inferredType->kind == TypeKind::FUNCTION) {
+            ss << "\\nType: (";
+            for(auto* p : inferredType->paramTypes) ss << p->getDescriptor() << ",";
+            ss << ") -> " << inferredType->returnType->getDescriptor();
+        }
+        else ss << "\\nType: " << inferredType->toString();
     }
 
     if (constPoolIndex > 0)
