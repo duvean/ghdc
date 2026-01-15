@@ -84,7 +84,7 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
             }
         }
 
-        // 2. Анализируем тело (теперь идентификаторы 'a', 'b', 'xs' будут в таблице)
+        // 2. Анализируем тело
         if (node->expr) {
             analyzeExpr(node->expr);
 
@@ -337,11 +337,11 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
 
     case EXPR_DO_BLOCK: {
         if (node->decls) {
-            for (auto* decl : node->decls->decls) {
-                analyzeDecl(decl);
+            for (auto* d : node->decls->decls) {
+                analyzeDecl(d);
             }
         }
-        node->inferredType = SemanticType::IO();
+        node->inferredType = SemanticType::IO(); 
         break;
     }
 
@@ -376,14 +376,10 @@ void SemanticAnalyzer::analyzePattern(ExprNode* pattern, SemanticType* expectedT
 
 void SemanticAnalyzer::collectTypes(ASTNode* node, std::vector<SemanticType*>& types) {
     if (!node) return;
-
-    // В вашей системе узлы типов могут быть ExprNode
     ExprNode* expr = dynamic_cast<ExprNode*>(node);
     if (!expr) return;
 
     if (expr->type == EXPR_TYPE_FUNCTION) {
-        // a -> (b -> c)
-        // Слева аргумент, справа - остаток сигнатуры
         collectTypes(expr->left, types);
         collectTypes(expr->right, types);
     }
@@ -391,12 +387,22 @@ void SemanticAnalyzer::collectTypes(ASTNode* node, std::vector<SemanticType*>& t
         if (expr->value == "Int") types.push_back(SemanticType::Int());
         else if (expr->value == "Float") types.push_back(SemanticType::Float());
         else if (expr->value == "Bool") types.push_back(SemanticType::Bool());
+        else if (expr->value == "()" || expr->value == "Void") types.push_back(SemanticType::Void());
         else types.push_back(SemanticType::Unknown());
     }
+    // Обработка конструкторов (IO, Maybe и т.д.)
+    else if (expr->type == EXPR_TYPE_CONSTRUCTOR) {
+        if (expr->name == "IO") {
+            types.push_back(SemanticType::IO());
+        } else {
+            SemanticType* constr = new SemanticType(TypeKind::CONSTRUCTOR);
+            constr->typeName = expr->name;
+            types.push_back(constr);
+        }
+    }
     else if (expr->type == EXPR_TYPE_LIST) {
-        // [T] - тип T обычно в expr->right или expr->left
         std::vector<SemanticType*> inner;
-        collectTypes(expr->right, inner); 
+        collectTypes(expr->right ? expr->right : expr->left, inner); 
         if (!inner.empty()) {
             types.push_back(SemanticType::List(inner.back()));
         } else {
@@ -422,20 +428,10 @@ void SemanticAnalyzer::initBuiltins() {
 
     // MAP
 
-    // Временные типы-заглушки для полиморфизма (пока не ввели шаблоны)
     SemanticType* anyA = SemanticType::Unknown();
     SemanticType* anyB = SemanticType::Unknown();
-
-    // Сигнатура для map: первый аргумент — функция (a -> b)
     SemanticType* mapFuncArg = SemanticType::Function({anyA}, anyB);
-    
-    FunctionSignature mapSig;
-    mapSig.paramTypes = { mapFuncArg, SemanticType::List(anyA) };
-    mapSig.returnType = SemanticType::List(anyB);
-    builtinSignatures["map"] = mapSig;
-
-    // map :: (a -> b) -> [a] -> [b]
-    builtinSignatures["map"]  = { {}, SemanticType::Unknown() };
+    builtinSignatures["map"] = { { mapFuncArg, SemanticType::List(anyA) }, SemanticType::List(anyB) };
 
 
     // FOLD
@@ -452,6 +448,11 @@ void SemanticAnalyzer::initBuiltins() {
     foldSig.returnType = anyAcc; // Результат — того же типа, что аккумулятор
     
     builtinSignatures["fold"] = foldSig;
+
+
+    // IO функции
+    builtinSignatures["putStrLn"] = { { SemanticType::String() }, SemanticType::IO() };
+    builtinSignatures["print"]    = { { SemanticType::Int() },    SemanticType::IO() };
 }
 
 void SemanticAnalyzer::flattenCall(ExprNode* node, std::vector<ExprNode*>& args, ExprNode** finalFunc) {

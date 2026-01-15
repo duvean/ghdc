@@ -54,16 +54,27 @@ public:
     
     bool equals(SemanticType* other) {
         if (!other || kind != other->kind) return false;
-        if (kind == TypeKind::PRIMITIVE) return base == other->base;
-        if (kind == TypeKind::LIST) return subType->equals(other->subType);
-        if (kind == TypeKind::FUNCTION) {
-            if (paramTypes.size() != other->paramTypes.size()) return false;
-            for (size_t i = 0; i < paramTypes.size(); ++i) {
-                if (!paramTypes[i]->equals(other->paramTypes[i])) return false;
-            }
-            return returnType->equals(other->returnType);
+
+        switch (kind) {
+            case TypeKind::PRIMITIVE:
+                return base == other->base;
+            case TypeKind::LIST:
+                if (!subType || !other->subType) return subType == other->subType;
+                return subType->equals(other->subType);
+            case TypeKind::FUNCTION:
+                if (paramTypes.size() != other->paramTypes.size()) return false;
+                for (size_t i = 0; i < paramTypes.size(); ++i) {
+                    if (!paramTypes[i]->equals(other->paramTypes[i])) return false;
+                }
+                return returnType->equals(other->returnType);
+            case TypeKind::CONSTRUCTOR:
+                return typeName == other->typeName;
+            case TypeKind::UNKNOWN:
+                // UNKNOWN не равен даже другому UNKNOWN для безопасности
+                return false;
+            default:
+                return true;
         }
-        return true;
     }
 
     std::string getDescriptor() {
@@ -76,9 +87,8 @@ public:
             default:               return "V";
             }
         }
-        if (kind == TypeKind::LIST) {
-            return "[" + subType->getDescriptor();
-        }
+        if (kind == TypeKind::LIST) return "[" + subType->getDescriptor();
+        if (kind == TypeKind::CONSTRUCTOR) return "L" + typeName + ";";
         if (kind == TypeKind::UNKNOWN) return "V";
         return "V";
     }
@@ -92,6 +102,7 @@ public:
             if (base == BaseType::BOOL) return "Bool";
             if (base == BaseType::STRING) return "String";
         }
+        if (kind == TypeKind::CONSTRUCTOR) return typeName;
         return getDescriptor();
     }
 };
