@@ -1,19 +1,9 @@
 #pragma once
 #include <string>
+#include <vector>
 
 enum class TypeKind { PRIMITIVE, LIST, FUNCTION, CONSTRUCTOR, UNKNOWN };
 enum class BaseType { INT, FLOAT, BOOL, STRING, VOID, IO };
-
-enum JvmConstantTag {
-    CONSTANT_Utf8 = 1,
-    CONSTANT_Integer = 3,
-    CONSTANT_Float = 4,
-    CONSTANT_Class = 7,
-    CONSTANT_String = 8,
-    CONSTANT_Fieldref = 9,
-    CONSTANT_Methodref = 10,
-    CONSTANT_NameAndType = 12
-};
 
 class SemanticType {
 public:
@@ -34,12 +24,12 @@ public:
         : kind(TypeKind::FUNCTION), base(BaseType::VOID), 
           subType(nullptr), paramTypes(params), returnType(ret) {}
 
-    static SemanticType* Int()     { return new SemanticType(BaseType::INT); }
-    static SemanticType* Float()   { return new SemanticType(BaseType::FLOAT); }
-    static SemanticType* Bool()    { return new SemanticType(BaseType::BOOL); }
-    static SemanticType* String()  { return new SemanticType(BaseType::STRING); }
-    static SemanticType* Void()    { return new SemanticType(BaseType::VOID); }
-    static SemanticType* Unknown() { return new SemanticType(); }
+    static SemanticType* Int    ()  { return new SemanticType(BaseType::INT); }
+    static SemanticType* Float  ()  { return new SemanticType(BaseType::FLOAT); }
+    static SemanticType* Bool   ()  { return new SemanticType(BaseType::BOOL); }
+    static SemanticType* String ()  { return new SemanticType(BaseType::STRING); }
+    static SemanticType* Void   ()  { return new SemanticType(BaseType::VOID); }
+    static SemanticType* Unknown()  { return new SemanticType(); }
     static SemanticType* List(SemanticType* inner) {
         return new SemanticType(TypeKind::LIST, inner);
     }
@@ -87,11 +77,11 @@ public:
                 default:               return "V";
             }
         }
-        // Для списков в JVM это [ + дескриптор, но для отладки можно так:
-        if (kind == TypeKind::LIST) return "[" + subType->getDescriptor() + "]"; 
-        
+        if (kind == TypeKind::LIST) return "[" + subType->getDescriptor();
         if (kind == TypeKind::CONSTRUCTOR) return "L" + typeName + ";";
-        if (kind == TypeKind::FUNCTION) return "LFunction;"; 
+        
+        // Если функция передается как аргумент (лямбда), в JVM это обычно Object или спец интерфейс
+        if (kind == TypeKind::FUNCTION) return "Ljava/lang/Object;"; 
         
         return "V";
     }

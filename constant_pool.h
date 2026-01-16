@@ -1,9 +1,20 @@
 #pragma once
+#include <map>
 #include <vector>
 #include <string>
-#include <map>
 #include <iostream>
-#include "jvm_spec.h"
+#include "semantic_type.h"
+
+enum JvmConstantTag {
+    CONSTANT_Utf8 = 1,
+    CONSTANT_Integer = 3,
+    CONSTANT_Float = 4,
+    CONSTANT_Class = 7,
+    CONSTANT_String = 8,
+    CONSTANT_Fieldref = 9,
+    CONSTANT_Methodref = 10,
+    CONSTANT_NameAndType = 12
+};
 
 struct ConstantPoolEntry {
     JvmConstantTag tag;
@@ -17,15 +28,20 @@ struct ConstantPoolEntry {
 class ConstantPool {
 private:
     std::vector<ConstantPoolEntry> entries;
-    std::map<std::string, int> utf8Cache; // Чтобы не дублировать строки
+    std::map<std::string, int> utf8Cache;
 
 public:
-    ConstantPool() { entries.emplace_back(); }
+    int addEntry(const ConstantPoolEntry& entry);
 
     int addUtf8(const std::string& val);
     int addStringLiteral(const std::string& val);
     int addInteger(int val);
     int addFloat(float val);
 
+    int addClass(const std::string& className);
+    int addNameAndType(const std::string& name, const std::string& descriptor);
+    int addMethodRef(const std::string& className, const std::string& methodName, const std::string& descriptor);
+
     const std::vector<ConstantPoolEntry>& getEntries() const { return entries; }
+    ConstantPool() { entries.emplace_back(); }
 };

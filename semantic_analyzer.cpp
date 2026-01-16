@@ -9,6 +9,35 @@ void SemanticAnalyzer::analyze(ProgramNode* root) {
     }
 }
 
+void SemanticAnalyzer::analyzeProgram(ProgramNode* root) {
+    if (!root) return;
+
+    // 1. СНАЧАЛА создаем класс
+    if (currentClass == nullptr) {
+        currentClass = new JvmClass("Main", constPool);
+        currentClass->classIdx = constPool.addClass("Main");
+        currentClass->superIdx = constPool.addClass("java/lang/Object");
+        constPool.addUtf8("Code");
+    }
+
+    std::cout << "--- Semantic Analysis Start ---\n";
+
+    // 2. Сначала собираем ВСЕ сигнатуры (первый проход)
+    // Это важно, чтобы функции видели друг друга
+    for (auto* decl : root->decls) {
+        if (decl && decl->type == DECL_FUNC_SIGN) {
+            analyzeDecl(decl);
+        }
+    }
+
+    // 3. Затем анализируем тела функций (второй проход)
+    for (auto* decl : root->decls) {
+        if (decl && (decl->type == DECL_FUNC || decl->type == DECL_VAR)) {
+            analyzeDecl(decl);
+        }
+    }
+}
+
 void SemanticAnalyzer::analyzeDeclList(DeclListNode* list) {
     if (!list) return;
     for (auto decl : list->decls) {
@@ -60,32 +89,62 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
 
     // 3. Обработка тел функций
     else if (node->type == DECL_FUNC) {
-        symbolTable.clear();
-        int currentLocalIdx = 0; // Начинаем отсчет локальных переменных функции
-
+        // 1. Ищем сигнатуру
         auto it = functionSignatures.find(node->name);
-        if (it == functionSignatures.end()) return;
+        if (it == functionSignatures.end()) {
+            std::cerr << "[Error] No signature for function: " << node->name << "\n";
+            return;
+        }
         FunctionSignature& sig = it->second;
+        std::string desc = sig.getDescriptor();
 
-        // 1. Анализируем паттерны аргументов
+        // 2. Создаем JVM метод
+        JvmMethod method(node->name, desc, node);
+        
+        // Регистрируем имя и дескриптор в Constant Pool
+        method.nameIdx = constPool.addUtf8(node->name);
+        method.descIdx = constPool.addUtf8(desc);
+
+        // 3. Подготовка к анализу тела
+        symbolTable.clear();
+        int currentLocalIdx = 0;
+
+        // 4. Анализ аргументов (Паттерны)
         if (node->paramsList) {
             auto* declList = dynamic_cast<DeclListNode*>(node->paramsList);
             for (size_t i = 0; i < declList->decls.size(); ++i) {
                 if (i < sig.paramTypes.size()) {
-                    // Теперь паттерны x, (y:ys) и [] получат типы из sig
                     analyzePattern(declList->decls[i]->expr, sig.paramTypes[i], currentLocalIdx);
                 }
             }
         }
 
-        // 2. Анализируем тело
+        // 5. Анализ тела функции
         if (node->expr) {
             analyzeExpr(node->expr);
 
+            // Для пустых списков
             if (node->expr->type == EXPR_ARRAY && node->expr->block.empty()) {
                 node->expr->inferredType = sig.returnType;
             }
         }
+
+        // 6. ФИНАЛ: Сохраняем локальные переменные в структуру метода
+        // (SymbolTable сейчас содержит все переменные этой функции)
+        for (std::map<std::string, LocalVariable>::const_iterator it = symbolTable.begin(); it != symbolTable.end(); ++it) {
+            // it->first — имя переменной (string)
+            // it->second — объект LocalVariable
+            method.locals.push_back(it->second);
+        }
+        
+        if (currentClass) {
+            currentClass->methods.push_back(method);
+        }
+        else {
+            std::cerr << "[Critical Error] currentClass is NULL while analyzing " << node->name << "\n";
+        }
+        std::cout << "[JvmGen] Method '" << node->name << "' processed. Locals count: " 
+                << method.locals.size() << "\n";
     }
 
     // 4. Обработка Let-блоков
@@ -302,6 +361,11 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
                 }
                 chain[i]->inferredType = currentType;
             }
+
+            int mRefIdx = constPool.addMethodRef("Main", name, sig.getDescriptor());
+        
+            // Сохраняем этот индекс в узле, он пригодится при генерации invokestatic
+            node->constPoolIndex = mRefIdx;
         } 
         
         // Если это map/fold или другие сложные случаи
@@ -488,5 +552,69 @@ void SemanticAnalyzer::flattenCall(ExprNode* node, std::vector<ExprNode*>& args,
     } else {
         // Мы дошли до самого корня — узла EXPR_VAR_REF (например, 'fold')
         *finalFunc = node;
+    }
+}
+
+
+// PROCESSING
+
+void SemanticAnalyzer::printDebugInfo() {
+    std::cout << "\n============================================\n";
+    std::cout << "           JVM CONSTANT POOL                \n";
+    std::cout << "============================================\n";
+    
+    const auto& entries = constPool.getEntries();
+    for (size_t i = 1; i < entries.size(); ++i) { // Индексы с 1
+        const auto& e = entries[i];
+        std::cout << "#" << i << " = ";
+        
+        switch (e.tag) {
+            case CONSTANT_Utf8: 
+                std::cout << "Utf8          \"" << e.stringValue << "\""; 
+                break;
+            case CONSTANT_Integer: 
+                std::cout << "Integer       " << e.intValue; 
+                break;
+            case CONSTANT_Float: 
+                std::cout << "Float         " << e.floatValue; 
+                break;
+            case CONSTANT_Class: 
+                std::cout << "Class         #" << e.refIndex1; 
+                break;
+            case CONSTANT_String: 
+                std::cout << "String        #" << e.refIndex1; 
+                break;
+            case CONSTANT_NameAndType: 
+                std::cout << "NameAndType   #" << e.refIndex1 << ":#" << e.refIndex2; 
+                break;
+            case CONSTANT_Methodref: 
+                std::cout << "MethodRef     #" << e.refIndex1 << ".#" << e.refIndex2; 
+                break;
+            default: 
+                std::cout << "Unknown Tag (" << (int)e.tag << ")";
+        }
+        std::cout << "\n";
+    }
+
+    std::cout << "\n============================================\n";
+    std::cout << "           CLASS METHODS                    \n";
+    std::cout << "============================================\n";
+
+    if (currentClass) {
+        std::cout << "Class: " << currentClass->className << "\n";
+        for (const auto& m : currentClass->methods) {
+            std::cout << "Method: " << m.name << "\n";
+            std::cout << "  Descriptor: " << m.descriptor << "\n";
+            std::cout << "  CP Indices: Name=#" << m.nameIdx << ", Desc=#" << m.descIdx << "\n";
+            std::cout << "  Locals (" << m.locals.size() << "):\n";
+            for (const auto& l : m.locals) {
+                // Для красивого вывода нужно найти имя переменной. 
+                // В SymbolTable мы хранили имя в ключе map, а LocalVariable хранит только индекс/тип.
+                // В реальном коде можно добавить std::string name в LocalVariable для отладки.
+                std::cout << "    Slot " << l.index << ": Type=" 
+                          << (l.type ? l.type->toString() : "?") << "\n";
+            }
+            std::cout << "--------------------------------------------\n";
+        }
     }
 }

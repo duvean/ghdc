@@ -2,7 +2,7 @@
 #include <vector>
 #include <string>
 #include <sstream>
-#include "jvm_spec.h"
+#include "semantic_type.h"
 
 enum NodeType {
     NODE_PROGRAM,

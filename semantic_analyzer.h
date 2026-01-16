@@ -1,23 +1,14 @@
 #pragma once
 #include <map>
 #include <string>
-#include <vector>
 #include "ast.h"
+#include "jvm_class.h"
 #include "constant_pool.h"
-
-struct LocalVariable {
-    int index;
-    SemanticType* type;
-    LocalVariable(SemanticType* t = nullptr, int i = -1) : type(t), index(i) {}
-};
-
-struct FunctionSignature {
-    std::vector<SemanticType*> paramTypes;
-    SemanticType* returnType;
-};
+#include "semantic_common.h"
 
 class SemanticAnalyzer {
 private:
+    JvmClass* currentClass = nullptr;
     ConstantPool& constPool;
     
     std::map<std::string, LocalVariable> symbolTable;
@@ -29,9 +20,12 @@ private:
 public:
     SemanticAnalyzer(ConstantPool& cp) : constPool(cp) { initBuiltins(); }
     void analyze(ProgramNode* root);
+    void printDebugInfo();
 
 private:
     void initBuiltins();
+
+    void analyzeProgram(ProgramNode* root);
 
     void analyzeDeclList(DeclListNode* list);
     void analyzeDecl(DeclNode* node);
