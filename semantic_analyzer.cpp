@@ -46,16 +46,17 @@ void SemanticAnalyzer::analyzeProgram(ProgramNode* root) {
     // 4. После анализа всех деклараций добавляем JVM Entry Point
     // Это public static void main(String[] args)
 
-    // Регистрируем дескриптор ([Ljava/lang/String;)V
+    // Регистрируем дескриптор
     std::string mainDesc = "([Ljava/lang/String;)V";
-    
-    // Создаем метод-заглушку (body = nullptr, так как код мы сгенерируем вручную позже)
+
+    // Регистрируем MethodRef для самой точки входа
+    int javaMainRef = constPool.addMethodRef("HaskellProgram", "main", mainDesc);
+
     JvmMethod entryPoint("main", mainDesc, nullptr);
     entryPoint.nameIdx = constPool.addUtf8("main");
     entryPoint.descIdx = constPool.addUtf8(mainDesc);
-    entryPoint.accessFlags = 0x0009; // public static
+    entryPoint.accessFlags = 0x0009; // ACC_PUBLIC | ACC_STATIC
 
-    // Добавляем в список методов класса
     currentClass->methods.push_back(entryPoint);
     
     std::cout << "[JvmGen] Added synthetic JVM entry point 'main' -> calls 'haskellMain'\n";
@@ -124,12 +125,14 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
 
         // Обработка main
         if (node->name == "main") {
-            // Переименовываем haskell-функцию во внутреннюю
             internalName = "haskellMain";
-            // Здесь можно принудительно выставить дескриптор ()V, если IO обрабатывается как Void
-            // descriptor = "()V"; 
+            descriptor = "()V"; 
             
-            std::cout << "[JvmGen] Renaming user 'main' to '" << internalName << "' for JVM compatibility.\n";
+            // Создаем MethodRef для Haskell-кода
+            // Это позволит JVM найти этот метод внутри этого же класса (#3)
+            int haskellMainRef = constPool.addMethodRef("HaskellProgram", internalName, descriptor);
+            
+            std::cout << "[JvmGen] MethodRef for haskellMain created at index: " << haskellMainRef << "\n";
         }
 
         // 2. Создаем JVM метод
