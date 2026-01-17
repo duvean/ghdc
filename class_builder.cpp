@@ -174,14 +174,25 @@ void ClassBuilder::writeMethods() {
 }
 
 uint8_t ClassBuilder::getReturnOpcode(const std::string& descriptor) {
-    char returnType = descriptor.back(); // Последний символ дескриптора, напр. (I[I)I -> I
-    switch (returnType) {
+    size_t parenIndex = descriptor.find(')');
+    if (parenIndex == std::string::npos || parenIndex + 1 >= descriptor.size()) {
+        return 0xB1; // На всякий случай
+    }
+
+    char returnStart = descriptor[parenIndex + 1];
+
+    switch (returnStart) {
         case 'V': return 0xB1; // RETURN (void)
+        case '[': return 0xB0; // ARETURN (любой массив: [I, [F, [L...;)
+        case 'L': return 0xB0; // ARETURN (объект)
         case 'I': 
-        case 'Z': return 0xAC; // IRETURN (int, bool)
+        case 'Z': 
+        case 'B': 
+        case 'C': 
+        case 'S': return 0xAC; // IRETURN (целые и bool)
         case 'F': return 0xAE; // FRETURN (float)
-        case ';': 
-        case ']': return 0xB0; // ARETURN (объекты и массивы)
+        case 'D': return 0xAF; // DRETURN (double)
+        case 'J': return 0xAD; // LRETURN (long)
         default:  return 0xB1;
     }
 }

@@ -178,12 +178,19 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
         }
         
         if (currentClass) {
-            currentClass->methods.push_back(method);
+            auto it = std::find_if(currentClass->methods.begin(), currentClass->methods.end(),
+            [&](const JvmMethod& m) { return m.name == internalName; });
+
+            if (it != currentClass->methods.end()) {
+                it->bodies.push_back(node); // Добавляем еще одно уравнение к существующему методу
+            } else {
+                currentClass->methods.emplace_back(internalName, descriptor, node);
+            }
         }
         else {
-            std::cerr << "[Critical Error] currentClass is NULL while analyzing " << node->name << "\n";
+            std::cerr << "[Critical Error] currentClass is NULL while analyzing " << internalName << "\n";
         }
-        std::cout << "[JvmGen] Method '" << node->name << "' processed. Locals count: " 
+        std::cout << "[JvmGen] Method '" << internalName << "' processed. Locals count: " 
                 << method.locals.size() << "\n";
     }
 

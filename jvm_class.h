@@ -14,7 +14,7 @@ struct JvmMethod {
     int descIdx = 0;    // Индекс в Constant Pool (Utf8)
     int accessFlags = 0x0009; // ACC_PUBLIC | ACC_STATIC
     std::vector<LocalVariable> locals;
-    DeclNode* body;
+    std::vector<DeclNode*>     bodies;
 
     // Для синтетических вызовов (например main -> haskellMain)
     std::string callTargetName;
@@ -23,9 +23,11 @@ struct JvmMethod {
         nameIdx = cp.addUtf8(name);
         descIdx = cp.addUtf8(descriptor);
     }
-    
+
     JvmMethod(std::string n, std::string d, DeclNode* node) 
-        : name(n), descriptor(d), body(node) {}
+        : name(n), descriptor(d) {
+        bodies.push_back(node);
+    }
 };
 
 struct JvmClass {
