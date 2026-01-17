@@ -1,6 +1,7 @@
-#include "semantic_analyzer.h"
-#include "class_builder.h"
 #include <iostream>
+#include "class_builder.h"
+#include "code_generator.h"
+#include "semantic_analyzer.h"
 
 void SemanticAnalyzer::analyze(ProgramNode* root) {
     analyzeProgram(root);
@@ -61,6 +62,14 @@ void SemanticAnalyzer::analyzeProgram(ProgramNode* root) {
     currentClass->methods.push_back(entryPoint);
     std::cout << "[JvmGen] Added synthetic JVM entry point 'main' -> calls 'haskellMain'\n";
 
+    // Генерация байткода
+    for (auto& method : currentClass->methods) {
+        if (method.name == "<init>") continue; // Конструктор пишем вручную или отдельно
+        
+        CodeGenerator gen(constPool, method.bytecode);
+        gen.generate(method);
+    }
+
     ClassBuilder builder("output/HaskellProgram.class", currentClass);
     bool res = builder.build();
 }
@@ -80,20 +89,22 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
         if (node->expr) {
             analyzeExpr(node->expr);
 
-            // 2. Регистрируем переменную
-            LocalVariable varInfo;
-            varInfo.index = nextLocalIndex++;
-            varInfo.type = node->expr->inferredType;
-
+            // 1. Берем текущий свободный индекс
+            int index = nextLocalIndex++; 
             SemanticType* type = node->expr->inferredType;
-            symbolTable[node->name] = LocalVariable(type, nextLocalIndex++);
 
-            // 3. Атрибутируем узел
-            if (dynamic_cast<ASTNode*>(node)) node->inferredType = type;
+            // 2. ОБЯЗАТЕЛЬНО сохраняем индекс в сам узел декларации
+            // Чтобы CodeGenerator знал, куда делать ISTORE/ASTORE
+            node->localVarIndex = index; 
+            node->inferredType = type;
+
+            // 3. Регистрируем в таблице символов для последующих вызовов
+            // Используем ТОТ ЖЕ самый индекс
+            symbolTable[node->name] = LocalVariable(type, index);
 
             std::cout << "[Semantic] Declared var '" << node->name
-                << "' index=" << varInfo.index
-                << " type=" << (varInfo.type ? varInfo.type->getDescriptor() : "?") << "\n";
+                    << "' index=" << index
+                    << " type=" << (type ? type->getDescriptor() : "?") << "\n";
         }
     }
     
@@ -368,16 +379,19 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
 
         // СПЕЦИАЛЬНАЯ ЛОГИКА для head/tail (Динамическая сигнатура)
         if ((name == "head" || name == "tail" || name == "isNull") && !allArgs.empty()) {
-        SemanticType* argType = allArgs[0]->inferredType;
-        
-        // Работаем только если аргумент - список
-        if (argType && argType->kind == TypeKind::LIST) {
-            sig.paramTypes = { argType };
+            SemanticType* argType = allArgs[0]->inferredType;
             
-            if (name == "head")      sig.returnType = argType->subType;
-                else if (name == "tail") sig.returnType = argType;
-                else if (name == "isNull") sig.returnType = SemanticType::Bool(); // Динамически [T] -> Bool
+            // Работаем только если аргумент - список
+            if (argType && argType->kind == TypeKind::LIST) {
+                sig.paramTypes = { argType };
                 
+                if (name == "head") 
+                    sig.returnType = argType->subType;
+                else if (name == "tail") 
+                    sig.returnType = argType;
+                else if (name == "isNull") 
+                    sig.returnType = SemanticType::Bool(); // Динамически [T] -> Bool
+                    
                 foundSig = true;
                 isBuiltin = true;
             }

@@ -1,6 +1,7 @@
 #pragma once    
 #include <string>
 #include <vector>
+#include <cstdint>
 #include "ast.h"
 #include "constant_pool.h"
 #include "semantic_common.h"
@@ -15,6 +16,8 @@ struct JvmMethod {
     int accessFlags = 0x0009; // ACC_PUBLIC | ACC_STATIC
     std::vector<LocalVariable> locals;
     std::vector<DeclNode*>     bodies;
+
+    std::vector<uint8_t> bytecode;
 
     // Для синтетических вызовов (например main -> haskellMain)
     std::string callTargetName;

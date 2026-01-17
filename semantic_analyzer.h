@@ -6,6 +6,7 @@
 #include "constant_pool.h"
 #include "semantic_common.h"
 
+
 class SemanticAnalyzer {
 private:
     JvmClass* currentClass = nullptr;

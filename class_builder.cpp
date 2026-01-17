@@ -123,10 +123,7 @@ void ClassBuilder::writeMethods() {
         writeU2(1); // Attributes Count = 1 (только Code)
 
         // 1. Ищем индекс строки "Code" в Constant Pool
-        // (Обычно это #1, как у вас, но лучше найти честно или передать)
-        // Для простоты предположим, что вы знаете индекс или найдете его
-        // int codeNameIdx = jvmClass->cp.lookupUtf8("Code"); 
-        int codeNameIdx = 1; // У вас в примере #1 = "Code"
+        int codeNameIdx = 1; // Он всегда #1 хардкодом но можно сделать поиск на всякий
 
         writeU2(codeNameIdx); // Attribute Name Index
 
@@ -134,42 +131,38 @@ void ClassBuilder::writeMethods() {
         std::vector<uint8_t> bytecode;
         
         if (method.name == "<init>") {
-            // aload_0 (2A), invokespecial #9 (B7 00 09), return (B1)
-            bytecode = { 0x2A, 0xB7 };
-            // Индекс метода Object.<init> нужно найти в CP или знать заранее
-            // В вашем выводе это #9
-            uint16_t superInitIdx = 9; // ХАРДКОД ДЛЯ ТЕСТА! Замените на реальный поиск
-            bytecode.push_back((superInitIdx >> 8) & 0xFF);
-            bytecode.push_back(superInitIdx & 0xFF);
-            bytecode.push_back(0xB1);
-        } else if (method.name == "main" && method.descriptor.find("([L") != std::string::npos) {
-            // Синтетический main: invokestatic haskellMain, return
-            // Ищем или добавляем MethodRef динамически
+            // Оставляем вашу ручную логику для конструктора
+            bytecode = { 0x2A, 0xB7, 0x00, 0x09, 0xB1 }; 
+        } 
+        else if (method.name == "main" && method.descriptor.find("([L") != std::string::npos) {
+            // Оставляем синтетический main (вызов haskellMain)
             int targetRef = jvmClass->cp.addMethodRef(jvmClass->className, "haskellMain", "()V");
-            
-            bytecode.push_back(0xB8); // invokestatic
-            bytecode.push_back((targetRef >> 8) & 0xFF);
-            bytecode.push_back(targetRef & 0xFF);
-            bytecode.push_back(0xB1); // return
-        } else {
-            // Для остальных пока просто return (для void) или ireturn
-            // Внимание: если метод должен возвращать int, просто return крашнет верификатор
-            // Но для проверки структуры файла пойдет
-            bytecode = { getReturnOpcode(method.descriptor) };
+            bytecode = { 
+                0xB8, (uint8_t)(targetRef >> 8), (uint8_t)(targetRef & 0xFF), 
+                0xB1 
+            };
+        } 
+        else {
+            // ДЛЯ ВСЕХ ОСТАЛЬНЫХ (haskellMain, insert, findMin):
+            // Берем то, что сгенерировал CodeGenerator
+            bytecode = method.bytecode;
+
+            // Если ничего нет то поплачем и добавим ретёрн
+            if (bytecode.empty()) {
+                bytecode.push_back(getReturnOpcode(method.descriptor));
+            }
         }
 
-        // --- СЧИТАЕМ РАЗМЕР АТРИБУТА CODE ---
-        // Header (max_stack 2 + max_locals 2 + code_len 4) + code + ex_table_len 2 + attr_count 2
+        // --- СЧИТАЕМ РАЗМЕР И ПИШЕМ ---
         uint32_t codeAttrLen = 2 + 2 + 4 + (uint32_t)bytecode.size() + 2 + 2;
-
-        writeU4(codeAttrLen);       // Attribute Length
-        writeU2(10);                // Max Stack (С запасом)
-        writeU2(10);                // Max Locals (С запасом)
-        writeU4((uint32_t)bytecode.size()); // Code Length
-        writeBytes(bytecode);       // Actual Bytecode
+        writeU4(codeAttrLen);
+        writeU2(10); // max_stack
+        writeU2(10); // max_locals
+        writeU4((uint32_t)bytecode.size());
+        writeBytes(bytecode);
         
-        writeU2(0); // Exception Table Length (0)
-        writeU2(0); // Attributes inside Code (LineNumberTable etc.) - 0 for now
+        writeU2(0); // exception_table
+        writeU2(0); // attributes_count (внутри Code)
     }
 }
 
