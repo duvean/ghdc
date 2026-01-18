@@ -38,7 +38,12 @@ void CodeGenerator::generateExpr(ExprNode *node) {
             break;
 
         case NodeType::EXPR_VAR:
-            if (node->localVarIndex != -1) {
+            if (node->isBuiltinFunciton) {
+                // Это вызов статического метода без аргументов
+                // constPoolIndex уже заполнен на семантике
+                emit.emitU2(Opcode::INVOKESTATIC, (uint16_t)node->constPoolIndex);
+            }
+            else if (node->localVarIndex != -1) {
                 uint8_t op = getLoadOpcode(node->inferredType);
                 emit.emitU1(op, (uint8_t)node->localVarIndex);
             }
@@ -118,6 +123,18 @@ void CodeGenerator::generateDecl(DeclNode *node) {
 
         case NodeType::DECL_FUNC:
             if (node->expr) generateExpr(node->expr);
+            break;
+
+        case NodeType::DECL_MONADIC_BIND:
+            if (node->expr) {
+                // 1. Генерируем выражение (это вызовет INVOKESTATIC read*)
+                // На стеке окажется результат ввода (Int, Float или ссылка)
+                generateExpr(node->expr);
+
+                // 2. Сохраняем в локальную переменную
+                uint8_t op = getStoreOpcode(node->inferredType);
+                emit.emitU1(op, (uint8_t)node->localVarIndex);
+            }
             break;
 
         case NodeType::DECL_ACTION:

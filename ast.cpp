@@ -25,8 +25,8 @@ std::string nodeTypeToString(NodeType type) {
         case DECL_TYPE:                 return "TYPE_ALIAS_DECL";
         case DECL_CONSTRUCTOR:          return "DATA_CONSTRUCTOR";
         case DECL_LIST:                 return "DECL_LIST";
-        case DECL_MONADIC_BIND:         return "MONADIC_BIND";
-        case DECL_ACTION:               return "ACTION"; // Чистое выражение (напр., putStrLn)
+        case DECL_MONADIC_BIND:         return "DECL_MONADIC_BIND";
+        case DECL_ACTION:               return "DECL_ACTION"; // Чистое выражение (напр., putStrLn)
         case DECL_BLOCK:                return "DECL_BLOCK"; // Блок объявлений (напр., 'where' или 'let')
         
         // --- Выражения (Expressions) ---

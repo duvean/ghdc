@@ -218,6 +218,29 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
         }
     }
 
+    // Обработка var <- expr
+    else if (node->type == NodeType::DECL_MONADIC_BIND) {
+        if (node->expr) {
+            // 1. Анализируем правую часть (там будет вызов функции с определённым типом)
+            analyzeExpr(node->expr);
+
+            // 2. Получаем тип переменной
+            SemanticType* type = node->expr->inferredType;
+
+            // 3. Выделяем индекс
+            int index = nextLocalIndex++;
+            node->localVarIndex = index;
+            node->inferredType = type;
+
+            // 4. Регистрируем в таблице символов
+            symbolTable[node->name] = LocalVariable(type, index);
+
+            std::cout << "[Semantic] Bind var '" << node->name 
+                      << "' <- ... index=" << index 
+                      << " type=" << type->getDescriptor() << "\n";
+        }
+    }
+
     else if (node->type == DECL_ACTION) {
         // У DeclNode есть поле expr (само выражение вызова функции)
         if (node->expr) {
@@ -233,19 +256,45 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
 
     switch (node->type) {
     case EXPR_LITERAL: {
-        if (node->value.find('.') != std::string::npos) {
-            node->inferredType = SemanticType::Float();
-            float val = std::stof(node->value);
-            node->constPoolIndex = constPool.addFloat(val);
+        if (node->value.empty()) {
+            node->inferredType = SemanticType::String();
+            node->constPoolIndex = constPool.addStringLiteral("");
+            break;
         }
-        else if (isdigit(node->value[0]) || node->value[0] == '-') {
-            node->inferredType = SemanticType::Int();
-            int val = std::stoi(node->value);
-            node->constPoolIndex = constPool.addInteger(val);
-        }
+
+        // 1. Проверяем, является ли это числом (начинается с цифры или минуса)
+        bool isNumeric = !node->value.empty() && 
+                        (isdigit(node->value[0]) || (node->value[0] == '-' && node->value.size() > 1 && isdigit(node->value[1])));
+
+        if (isNumeric) {
+            // Если это число и в нем есть точка - это Float
+            if (node->value.find('.') != std::string::npos) {
+                node->inferredType = SemanticType::Float();
+                try {
+                    float val = std::stof(node->value);
+                    node->constPoolIndex = constPool.addFloat(val);
+                } catch (...) {
+                    // На случай уёбков которые прошли isNumeric, но не парсятся
+                    node->inferredType = SemanticType::String();
+                    node->constPoolIndex = constPool.addStringLiteral(node->value);
+                }
+            } 
+            // Если точек нет - это Int
+            else {
+                node->inferredType = SemanticType::Int();
+                node->constPoolIndex = constPool.addInteger(std::stoi(node->value));
+            }
+        } 
+        // 2. Если это не число - значит String
         else {
             node->inferredType = SemanticType::String();
-            node->constPoolIndex = constPool.addStringLiteral(node->value);
+            
+            std::string cleanValue = node->value;
+            if (cleanValue.size() >= 2 && cleanValue.front() == '"' && cleanValue.back() == '"') {
+                cleanValue = cleanValue.substr(1, cleanValue.size() - 2);
+            }
+            
+            node->constPoolIndex = constPool.addStringLiteral(cleanValue);
         }
         break;
     }
@@ -269,10 +318,18 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
         }
         // 3. Встроенные функции
         else if (builtinSignatures.count(node->name)) {
-            node->isFunctionRef = true;
+            FunctionSignature& sig = builtinSignatures[node->name];
+            
+            // Если это функция без аргументов (как readInt), она сразу возвращает значение
+            node->inferredType = sig.returnType;
             node->isBuiltinFunciton = true;
-            // Для встроенных пока оставим Unknown, они уточнятся в EXPR_FUNC_CALL
-            node->inferredType = SemanticType::Unknown(); 
+
+            // Добавляем MethodRef в ConstantPool сразу
+            std::string descriptor = "()" + sig.returnType->getDescriptor();
+            node->constPoolIndex = constPool.addMethodRef("HaskellRuntime", node->name, descriptor);
+            
+            std::cout << "[Semantic] Resolved builtin '" << node->name 
+                    << "' as CALL with type " << sig.returnType->getDescriptor() << "\n";
         }
         break;
     }
@@ -621,7 +678,9 @@ void SemanticAnalyzer::initBuiltins() {
     builtinSignatures["readInt"]      = { {}, SemanticType::Int() };
     builtinSignatures["readFloat"]    = { {}, SemanticType::Float() };
     builtinSignatures["readString"]   = { {}, SemanticType::String() };
-    builtinSignatures["readIntArray"] = { {}, SemanticType::List(SemanticType::Int()) };
+    builtinSignatures["readArrayInt"] = { {}, SemanticType::List(SemanticType::Int()) };
+    builtinSignatures["readArrayFloat"] = { {}, SemanticType::List(SemanticType::Float()) };
+    builtinSignatures["readArrayString"] = { {}, SemanticType::List(SemanticType::String()) };
 }
 
 void SemanticAnalyzer::flattenCall(ExprNode* node, std::vector<ExprNode*>& args, ExprNode** finalFunc) {
