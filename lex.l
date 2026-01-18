@@ -19,7 +19,7 @@ bool process_indentation(const char* line_text, vector<int>& layout_stack, bool 
 void place_semicolons(const char* line_text, int first_indent, bool end_of_file_flag);
 %}
 
-%x STRING CHAR ESCAPE COMMENT MULTILINE_COMMENT AFTER_KEYWORD FIRST_LINE
+%x STRING CHAR ESCAPE MULTILINE_COMMENT AFTER_KEYWORD FIRST_LINE
 
 %option never-interactive
 %option noyywrap
@@ -41,8 +41,6 @@ OPERATOR    [\+\-\*\/\=\<\>\&\|\^\!\~\\\@\#\$\%\?\.\:]
 %{
 string string_buffer;        // для строковых литералов
 bool is_char_escape;         // флаг для определения типа escape-последовательности
-string comment_buffer;	     // для комментариев
-int comment_nest_level = 0;  // для отслеживания вложенности комментариев
 bool char_processed = false; // для отслеживания обработки char
 vector<int> layout_stack = {0};   // стек с количествами отступов  
 bool indent_process_flag = false; // флаг обработки отступов в блоках
@@ -51,6 +49,9 @@ bool first_line_flag = true;      // флаг необходимости обр�
 int brace_count = 0;		          // счетчик для баланса фигурных скобок
 bool first_block_indent_flag = false;
 bool custom_indents_in_block_flag = false; // флаг пропуска блока с пользовательскими отступами
+int comment_counter;	     // счетчик для комментариев
+bool newline_flag = false; // флаг, указывающий на наличие переносов строк в многострочном комментарии
+bool comment_after_kw_flag = false; // флаг, показывающий, что после ключевого слова был обнаружен многострочный комментарий
 %}
 
 	/* Проверяем, находимся ли мы в начале файла */
@@ -74,49 +75,43 @@ bool custom_indents_in_block_flag = false; // флаг пропуска блок
 {WHITESPACE}+				  { /* Пропускаем пробелы */ }
 {HORIZ_TAB}+	              {  /* Пропускаем табы */ }
 
-"--"            {
-                  // Однострочный комментарий
-                  comment_buffer.clear();
-                  comment_buffer = "--";
-                  BEGIN(COMMENT);
-                }
+[ \t\n]*"--".*  { /* Однострочный комментарий */}
 
-<COMMENT>{
-  \n            { 
-				  yyless(0);
-                  //push_token(SINGLELINE_COMMENT, comment_buffer);
-                  BEGIN(INITIAL); 
-                }
-  .+            { 
-                  comment_buffer += yytext;
-                }
-  <<EOF>>       {
-                  //push_token(SINGLELINE_COMMENT, comment_buffer);
-                  BEGIN(INITIAL);
-                }
-}
 
-"{-"            { 
+[ \t\n]*"{-"    { 
                   // Начало многострочного комментария
-                  comment_nest_level = 1;
-                  comment_buffer.clear();
-                  comment_buffer = "{-";
+                  comment_counter = 0;
+                  comment_counter += strlen(yytext);
                   BEGIN(MULTILINE_COMMENT);
                 }
 
 <MULTILINE_COMMENT>{
-  "-"+"}"       { 
-                  comment_buffer += yytext;
-                  push_token(MULTILINE_COMMENT, comment_buffer);
-                  BEGIN(INITIAL);
+    "-"+"}"     { 
+                  comment_counter += strlen(yytext);
+				  for (int i = 0; i < comment_counter; i++) {
+					unput(' ');
+					}
+				  if(newline_flag){
+					unput('\n');
+					newline_flag = false;
+				  }
+				  if(comment_after_kw_flag){
+					BEGIN(AFTER_KEYWORD);
+				  } else {
+                    BEGIN(INITIAL);
+				  }
                 }
-				
-    [^-]*       { comment_buffer += yytext; } 
-    "-"+[^-}]*  { comment_buffer += yytext; }
+  
+    \n+         { comment_counter = 0; newline_flag = true;}
+	\t+         { comment_counter += strlen(yytext)*4; }
+	
+    [^-\t\n]*       { comment_counter += strlen(yytext); } 
+    "-"+[^-}\t\n]*  { comment_counter += strlen(yytext); }
 				
     <<EOF>>     { 
-                  lexical_error("Unterminated multiline comment", comment_buffer.c_str());
-			   BEGIN(INITIAL);
+				  comment_counter = 0;
+                  lexical_error("Unterminated multiline comment", yytext);
+			      BEGIN(INITIAL);
                 }
 }
 
@@ -153,13 +148,23 @@ bool custom_indents_in_block_flag = false; // флаг пропуска блок
 "of"           { push_token(KW_OF, yytext); BEGIN(AFTER_KEYWORD);}
 
 <AFTER_KEYWORD>{
+[ \t\n]*"{-"    { 
+                  // Начало многострочного комментария
+                  comment_counter = 0;
+                  comment_counter += strlen(yytext);
+				  comment_after_kw_flag = true;
+                  BEGIN(MULTILINE_COMMENT);
+                }
+				
 [\n \t]*\{ 		{
+				 comment_after_kw_flag = false;
 				 yyless(0);
 				 indent_process_flag = false;
 				 custom_indents_in_block_flag = true;
 				 BEGIN(INITIAL);
 				}
 [\n \t]*[^{]	{
+                 comment_after_kw_flag = false;
 				 yyless(0);
 				 indent_process_flag = true;
 				 custom_indents_in_block_flag = false;
@@ -385,7 +390,7 @@ int count_last_line_indent(const char* text) {
     int indent = 0;
     while (*last_line_start == ' ' || *last_line_start == '\t') {
         if (*last_line_start == '\t') {
-            indent += 8;
+            indent += 4;
         } else {
             indent++;
         }
