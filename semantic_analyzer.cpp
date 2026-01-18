@@ -431,12 +431,24 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
         break;
     }
 
-    case EXPR_IF:
+    case EXPR_IF: {
         analyzeExpr(node->cond);
+        if (node->cond->inferredType->base != BaseType::BOOL) {
+            std::cerr << "Error: IF condition must be Boolean" << std::endl;
+        }
+
         analyzeExpr(node->expr_true);
         analyzeExpr(node->expr_false);
+
+        // Проверка совпадения типов веток
+        if (node->expr_true->inferredType->base != node->expr_false->inferredType->base) {
+            // Можно добавить автокаст к Float, если одна ветка Int, а другая Float
+            std::cerr << "Error: IF branches type mismatch" << std::endl;
+        }
+
         node->inferredType = node->expr_true->inferredType;
         break;
+    }
 
     case EXPR_FUNC_CALL: {
         std::vector<ExprNode*> allArgs;

@@ -70,7 +70,63 @@ void CodeGenerator::generateExpr(ExprNode *node) {
                     emit.emit(FALOAD);
                 else 
                     emit.emit(AALOAD);
-                break;
+                return;
+            }
+
+            else if (node->op == "==" || node->op == "<" || node->op == ">" || node->op == "<=") {
+                generateExpr(node->left);
+                generateExpr(node->right);
+
+                // Выбираем инструкцию в зависимости от типа операндов
+                bool isFloat = (node->left->inferredType->base == BaseType::FLOAT);
+                
+                if (isFloat) {
+                    // Для Float используется FCMPG (результат: -1, 0, или 1 на стеке)
+                    emit.emit(FCMPG);
+                    // Теперь на стеке int, сравниваем его с нулем ниже
+                }
+
+                // Если условие верно, прыгаем на SET_1, иначе SET_0
+                uint8_t opcode;
+                if (isFloat) {
+                    // После FCMPG мы проверяем результат сравнения с 0
+                    if      (node->op == "==")  opcode = IFEQ;
+                    else if (node->op == "<")   opcode = IFLT;
+                    else if (node->op == ">")   opcode = IFGT;
+                    else                        opcode = IFLE;
+                } else {
+                    // Для Int используем прямые сравнения IF_ICMPxx
+                    if      (node->op == "==")  opcode = IF_ICMPEQ;
+                    else if (node->op == "<")   opcode = IF_ICMPLT;
+                    else if (node->op == ">")   opcode = IF_ICMPGT;
+                    else                        opcode = IF_ICMPLE;
+                }
+
+                // 1. Запоминаем адрес НАЧАЛА инструкции (самого опкода)
+                size_t jumpOpAddr = emit.getCurrentOffset(); 
+                
+                // 2. Опкод + 2 байта заглушки
+                emit.emitU2(opcode, 0); 
+                
+                // 3. Адрес для патча - это байты сразу после опкода
+                size_t patchAddr = jumpOpAddr + 1;
+
+                // Ветка FALSE
+                emit.iconst(0);
+                size_t gotoOpAddr = emit.getCurrentOffset();
+                emit.emitU2(GOTO, 0);
+                size_t gotoPatchAddr = gotoOpAddr + 1;
+
+                // Ветка TRUE
+                size_t trueTarget = emit.getCurrentOffset();
+                emit.patchU2(patchAddr, (uint16_t)(trueTarget - jumpOpAddr));
+                emit.iconst(1);
+
+                // Конец, сюда прыгает GOTO
+                size_t endTarget = emit.getCurrentOffset();
+                emit.patchU2(gotoPatchAddr, (uint16_t)(endTarget - gotoOpAddr));
+
+                return;
             }
 
             // Стандартная арифметика: сначала генерируем оба операнда
@@ -89,6 +145,40 @@ void CodeGenerator::generateExpr(ExprNode *node) {
                 else if (node->op == "*") emit.emit(Opcode::IMUL);
                 else if (node->op == "/") emit.emit(Opcode::IDIV);
             }
+            break;
+        }
+
+        case NodeType::EXPR_IF: {
+            // 1. Генерируем условие (оставляет 0 или 1 на стеке)
+            generateExpr(node->cond);
+
+            // 2. IFEQ: если 0, прыгаем в ELSE
+            size_t ifOpAddr = emit.getCurrentOffset(); // Запоминаем адрес начала инструкции
+            emit.emitU2(IFEQ, 0);
+            size_t ifPatchAddr = ifOpAddr + 1; // Адрес, куда писать смещение (сразу после опкода)
+
+            // 3. Ветка THEN
+            generateExpr(node->expr_true);
+            
+            // GOTO: после THEN нужно прыгнуть в самый конец (пропустить ELSE)
+            size_t gotoOpAddr = emit.getCurrentOffset();
+            emit.emitU2(GOTO, 0);
+            size_t gotoPatchAddr = gotoOpAddr + 1;
+
+            // 4. Ветка ELSE (начинается прямо здесь)
+            size_t elseTargetAddr = emit.getCurrentOffset();
+            // Патчим IFEQ: (адрес ELSE) - (адрес самого IFEQ)
+            int16_t elseOffset = (int16_t)(elseTargetAddr - ifOpAddr);
+            emit.patchU2(ifPatchAddr, (uint16_t)elseOffset);
+            
+            generateExpr(node->expr_false);
+
+            // 5. КОНЕЦ (сюда прыгнет GOTO)
+            size_t endTargetAddr = emit.getCurrentOffset();
+            // Патчим GOTO: (адрес END) - (адрес самого GOTO)
+            int16_t endOffset = (int16_t)(endTargetAddr - gotoOpAddr);
+            emit.patchU2(gotoPatchAddr, (uint16_t)endOffset);
+            
             break;
         }
 

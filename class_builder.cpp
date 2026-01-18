@@ -9,9 +9,9 @@ bool ClassBuilder::build() {
     // 1. Magic Number (0xCAFEBABE)
     writeU4(0xCAFEBABE);
 
-    // 2. Version (Java 8 = 52.0 -> Major 52, Minor 0)
+    // 2. Version (Java 6 = 50.0 -> Major 50, Minor 0)
     writeU2(0);  // Minor
-    writeU2(52); // Major
+    writeU2(50); // Major
 
     // 3. Constant Pool
     writeConstantPool();

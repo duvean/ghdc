@@ -19,13 +19,20 @@ enum Opcode : uint8_t {
     IASTORE  = 0x4F, AASTORE   = 0x53,
     FASTORE  = 0x51,
     IALOAD = 0x2E, FALOAD = 0x30, AALOAD = 0x32,
-    INVOKESTATIC = 0xB8
+    INVOKESTATIC = 0xB8,
+    FCMPG = 0x96, IFEQ = 0x99, IFLT = 0x9B, IFGT = 0x9D, IFLE = 0x9E, GOTO = 0xA7,
+    IF_ICMPEQ = 0x9F, IF_ICMPLT = 0xA1, IF_ICMPGT = 0xA3, IF_ICMPLE = 0xA4
 };
 
 class BytecodeEmitter {
     std::vector<uint8_t>& code;
 public:
     BytecodeEmitter(std::vector<uint8_t>& out) : code(out) {}
+
+    // Возвращает текущую позицию (адрес следующего байта)
+    size_t getCurrentOffset() const { 
+        return code.size(); 
+    }
 
     void emit(uint8_t opcode) { code.push_back(opcode); }
     
@@ -42,9 +49,17 @@ public:
         code.push_back(arg & 0xFF);
     }
     
-    // Умные обертки
+    // Позволяет пропатчить 2 байта по конкретному адресу
+    void patchU2(size_t pos, uint16_t value) {
+        if (pos + 1 < code.size()) {
+            code[pos] = (value >> 8) & 0xFF;
+            code[pos + 1] = value & 0xFF;
+        }
+    }
+
     void iconst(int val) {
         if (val >= 0 && val <= 5) emit(0x03 + val);
-        else emitU1(BIPUSH, (uint8_t)val); 
+        else if (val >= -128 && val <= 127) emitU1(0x10, (uint8_t)val); // BIPUSH
+        else emitU2(0x11, (uint16_t)val); // SIPUSH (или LDC если больше 32767)
     }
 };
