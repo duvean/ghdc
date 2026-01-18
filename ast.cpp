@@ -1,4 +1,5 @@
 #include <iostream>
+#include <algorithm>    
 #include "ast.h"
 
 size_t ASTNode::nextNodeId = 0;
@@ -503,15 +504,15 @@ ExprNode* ExprNode::createArrayExpr() {
 
 ExprNode* ExprNode::createArrayExpr(ASTNode* elements) {
     ExprNode* node = new ExprNode(NodeType::EXPR_ARRAY);
-    // Предполагаем, что elements — это ExprNode* (список элементов)
     ExprNode* elementList = static_cast<ExprNode*>(elements); 
 
-    // Если elementList — это узел списка, мы можем скопировать его block или сохранить ссылку
     if (elementList && elementList->type == NodeType::EXPR_LIST) {
-        node->block = elementList->block; // Копируем или присваиваем элементы
-        // В реальном коде: удаляем узел elementList, если он больше не нужен
+        // 1. Копируем элементы из временного списка в узел массива
+        node->block = elementList->block; 
+
+        // 2. Разворачиваем вектор, тк парсер собрал их в обратном порядке
+        std::reverse(node->block.begin(), node->block.end());
     } else {
-        // Или просто сохраняем сам список как левую ветвь для простоты
         node->left = elementList; 
     }
     
