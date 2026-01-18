@@ -141,11 +141,12 @@ public:
 
 class ExprNode : public ASTNode {
 public:
-    std::string op;       // бинарный оператор
-    std::string value;    // литерал
-    std::string name;     // переменная
-    std::vector<ExprNode*> block;  // для expr_list
-	std::vector<ExprNode*> arguments;
+    std::string            op;            // бинарный оператор
+    std::string            value;         // литерал
+    std::string            name;          // переменная
+    std::vector<ExprNode*> block;         // для expr_list
+	std::vector<ExprNode*> arguments;     // аргументы
+    std::vector<ExprNode*> flattenedArgs; // заполняется на семантике
     
     ExprNode* left = nullptr;
     ExprNode* right = nullptr;

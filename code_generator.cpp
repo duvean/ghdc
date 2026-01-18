@@ -49,14 +49,11 @@ void CodeGenerator::generateExpr(ExprNode *node) {
             }
             break;
 
-        case NodeType::EXPR_FUNC_CALL:
-            // 1. Генерируем аргументы (они ложатся на стек)
-            for (auto *arg : node->arguments) 
-                generateExpr(arg);
-
-            // 2. Вызываем метод
+        case NodeType::EXPR_FUNC_CALL: {
+            for (auto *arg : node->flattenedArgs) generateExpr(arg);
             emit.emitU2(INVOKESTATIC, (uint16_t)node->constPoolIndex);
             break;
+        }
 
         case NodeType::EXPR_BINARY: {
             if (node->op == "!!") {
@@ -260,11 +257,25 @@ void CodeGenerator::generateDecl(DeclNode *node) {
             }
             break;
 
-        case NodeType::DECL_FUNC:
-            if (node->expr) generateExpr(node->expr);
+        case NodeType::DECL_FUNC: {
+            if (node->expr) {
+                generateExpr(node->expr); // Результат тела функции на стеке
+                    
+                SemanticType* retType = node->expr->inferredType;
+                if (retType->base == BaseType::IO || retType->base == BaseType::VOID) {
+                    emit.emit(RETURN); // RETURN (void)
+                } else if (retType->base == BaseType::INT || retType->base == BaseType::BOOL) {
+                    emit.emit(IRETURN); // IRETURN
+                } else if (retType->base == BaseType::FLOAT) {
+                    emit.emit(FRETURN); // FRETURN
+                } else {
+                    emit.emit(ARETURN); // ARETURN (для объектов и массивов)
+                }
+            }
             break;
+        }
 
-        case NodeType::DECL_MONADIC_BIND:
+        case NodeType::DECL_MONADIC_BIND: {
             if (node->expr) {
                 // 1. Генерируем выражение (это вызовет INVOKESTATIC read*)
                 // На стеке окажется результат ввода (Int, Float или ссылка)
@@ -275,6 +286,7 @@ void CodeGenerator::generateDecl(DeclNode *node) {
                 emit.emitU1(op, (uint8_t)node->localVarIndex);
             }
             break;
+        }
 
         case NodeType::DECL_ACTION:
             // Это просто вызов функции (например, putStrLn)

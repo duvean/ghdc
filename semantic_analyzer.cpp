@@ -457,6 +457,7 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
 
         if (!baseFuncNode) break;
 
+        node->flattenedArgs = allArgs;
         analyzeExpr(baseFuncNode);
         for (auto* arg : allArgs) analyzeExpr(arg);
 
@@ -544,46 +545,6 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
                 chain[i]->inferredType = currentType;
             }
         } 
-        
-        // Если это map/fold или другие сложные случаи 
-        else if (name == "map") {
-            if (allArgs.size() < 2) {
-                // Если аргументов меньше 2, это частичное применение (пока Unknown или Function)
-                node->inferredType = SemanticType::Unknown();
-            } else {
-                SemanticType* funcArg = allArgs[0]->inferredType;
-                SemanticType* listArg = allArgs[1]->inferredType;
-
-                if (funcArg->kind == TypeKind::FUNCTION) {
-                    node->inferredType = SemanticType::List(funcArg->returnType);
-
-                    // Проверка: тип элементов списка == типу аргумента функции
-                    if (listArg->kind == TypeKind::LIST && !listArg->subType->equals(funcArg->paramTypes[0])) {
-                        std::cout << "[Warning] map: list of " << listArg->subType->getDescriptor()
-                                << " passed to function expecting " << funcArg->paramTypes[0]->getDescriptor() << "\n";
-                    }
-                }
-            }
-        }
-
-        else if (name == "fold") {
-            if (allArgs.size() < 3) {
-                node->inferredType = SemanticType::Unknown();
-            } else {
-                SemanticType* folder = allArgs[0]->inferredType;
-                SemanticType* initial = allArgs[1]->inferredType;
-                SemanticType* list = allArgs[2]->inferredType;
-
-                if (folder->kind == TypeKind::FUNCTION && folder->paramTypes.size() >= 2) {
-                    node->inferredType = initial; // Результат fold всегда типа аккумулятора
-
-                    // Проверка аккумулятора:
-                    if (!folder->paramTypes[0]->equals(initial)) {
-                        std::cout << "[Warning] fold: expected acc " << initial->getDescriptor() << "\n";
-                    }
-                }
-            }
-        }
         break;
     }
 
