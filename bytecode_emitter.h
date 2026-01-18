@@ -9,9 +9,12 @@ enum Opcode : uint8_t {
     FLOAD    = 0x17, FSTORE   = 0x38,
     ALOAD    = 0x19, ASTORE   = 0x3A,
     IADD     = 0x60, ISUB     = 0x64,
-    INVOKESTATIC = 0xB8,
+    FADD     = 0x62, FSUB     = 0x66,
+    IMUL     = 0x68, IDIV     = 0x6C,   
+    FMUL     = 0x6A, FDIV     = 0x6E,
     IRETURN  = 0xAC, ARETURN  = 0xB0, 
-    RETURN   = 0xB1
+    RETURN   = 0xB1, FRETURN  = 0xAE,
+    INVOKESTATIC = 0xB8, I2F  = 0x86
 };
 
 class BytecodeEmitter {

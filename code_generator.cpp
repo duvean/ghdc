@@ -29,6 +29,9 @@ void CodeGenerator::generateExpr(ExprNode *node) {
             if (node->inferredType->base == BaseType::INT) {
                 emit.iconst(std::stoi(node->value));
             }
+            else if (node->inferredType->base == BaseType::FLOAT) {
+                emit.emitU1(LDC, (uint8_t)node->constPoolIndex);
+            }
             else if (node->inferredType->base == BaseType::STRING) {
                 emit.emitU1(LDC, (uint8_t)node->constPoolIndex);
             }
@@ -53,10 +56,21 @@ void CodeGenerator::generateExpr(ExprNode *node) {
         case NodeType::EXPR_BINARY:
             generateExpr(node->left);
             generateExpr(node->right);
-            if (node->op == "+")
-                emit.emit(IADD);
-            if (node->op == "-")
-                emit.emit(ISUB);
+
+            // Определяем, работаем мы с Int или Float
+            // (Семантика гарантирует что типы скастились к общему (я надеюсь))
+            if (node->inferredType->base == BaseType::FLOAT) {
+                if (node->op == "+") emit.emit(Opcode::FADD);
+                else if (node->op == "-") emit.emit(Opcode::FSUB);
+                else if (node->op == "*") emit.emit(Opcode::FMUL);
+                else if (node->op == "/") emit.emit(Opcode::FDIV);
+            } 
+            else { // INT
+                if (node->op == "+") emit.emit(Opcode::IADD);
+                else if (node->op == "-") emit.emit(Opcode::ISUB);
+                else if (node->op == "*") emit.emit(Opcode::IMUL);
+                else if (node->op == "/") emit.emit(Opcode::IDIV);
+            }
             break;
 
         case NodeType::EXPR_DO_BLOCK:
@@ -64,6 +78,16 @@ void CodeGenerator::generateExpr(ExprNode *node) {
                 for (auto *decl : node->decls->decls) {
                     generateDecl(decl);
                 }
+            }
+            break;
+        
+        case NodeType::EXPR_CASTING:
+            // Генерируем выражение, которое нужно скастить (например, Int)
+            generateExpr(node->left);
+
+            if (node->inferredType->base == BaseType::FLOAT && 
+                node->left->inferredType->base == BaseType::INT) {
+                emit.emit(Opcode::I2F);
             }
             break;
     }

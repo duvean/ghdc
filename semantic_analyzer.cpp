@@ -377,7 +377,7 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
         bool foundSig = false;
         bool isBuiltin = false; // Флаг, что функция из HaskellRuntime
 
-        // СПЕЦИАЛЬНАЯ ЛОГИКА для head/tail (Динамическая сигнатура)
+        // Специальная логика для head/tail (динамическая сигнатура)
         if ((name == "head" || name == "tail" || name == "isNull") && !allArgs.empty()) {
             SemanticType* argType = allArgs[0]->inferredType;
             
@@ -397,7 +397,18 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
             }
         }
 
-        // ОБЩАЯ ЛОГИКА (из словарей)
+        // Сигнатура для полиморфного print
+        else if (name == "print" && !allArgs.empty()) {
+            SemanticType* argType = allArgs[0]->inferredType;
+            // (T) -> IO на основе типа аргумента
+            sig.paramTypes = { argType };
+            sig.returnType = SemanticType::IO();
+            
+            foundSig = true;
+            isBuiltin = true;
+        }
+
+        // Общая логика (из словарей)
         else if (builtinSignatures.count(name)) {
             sig = builtinSignatures[name];
             foundSig = true;
@@ -417,7 +428,7 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
             std::string targetClass = isBuiltin ? "HaskellRuntime" : currentClass->className;
             node->constPoolIndex = constPool.addMethodRef(targetClass, name, sig.getDescriptor());
 
-            // ТИПИЗАЦИЯ ЦЕПОЧКИ (чтобы не было ?)
+            // Типизация цепочки (чтобы не было ?)
             std::vector<ExprNode*> chain;
             ExprNode* curr = node;
             while (curr && curr->type == EXPR_FUNC_CALL) {
