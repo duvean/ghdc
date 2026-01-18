@@ -58,12 +58,25 @@ void CodeGenerator::generateExpr(ExprNode *node) {
             emit.emitU2(INVOKESTATIC, (uint16_t)node->constPoolIndex);
             break;
 
-        case NodeType::EXPR_BINARY:
+        case NodeType::EXPR_BINARY: {
+            if (node->op == "!!") {
+                generateExpr(node->left);  // На стек: Ссылка на массив (Ref)
+                generateExpr(node->right); // На стек: Индекс (Int)
+
+                SemanticType* resType = node->inferredType;
+                if (resType->base == BaseType::INT) 
+                    emit.emit(IALOAD);
+                else if (resType->base == BaseType::FLOAT) 
+                    emit.emit(FALOAD);
+                else 
+                    emit.emit(AALOAD);
+                break;
+            }
+
+            // Стандартная арифметика: сначала генерируем оба операнда
             generateExpr(node->left);
             generateExpr(node->right);
 
-            // Определяем, работаем мы с Int или Float
-            // (Семантика гарантирует что типы скастились к общему (я надеюсь))
             if (node->inferredType->base == BaseType::FLOAT) {
                 if (node->op == "+") emit.emit(Opcode::FADD);
                 else if (node->op == "-") emit.emit(Opcode::FSUB);
@@ -77,16 +90,51 @@ void CodeGenerator::generateExpr(ExprNode *node) {
                 else if (node->op == "/") emit.emit(Opcode::IDIV);
             }
             break;
+        }
 
-        case NodeType::EXPR_DO_BLOCK:
+        case NodeType::EXPR_ARRAY: {
+            // 1. Кладем размер массива на стек
+            int size = node->block.size();
+            emit.iconst(size);
+
+            // 2. Создаем массив
+            SemanticType* elemType = node->inferredType->subType;
+                
+            if (elemType->base == BaseType::INT) {
+                emit.emitU1(NEWARRAY, 10); // 10 = T_INT
+            } else if (elemType->base == BaseType::FLOAT) {
+                emit.emitU1(NEWARRAY, 6);  // 6 = T_FLOAT
+            } else if (elemType->base == BaseType::STRING) {
+                emit.emitU2(ANEWARRAY, (uint16_t)node->constPoolIndex);
+            }
+
+            // Сейчас пустой массив (ссылка) лежит на стеке.
+                
+            // 3. Заполняем элементами
+            for (int i = 0; i < size; ++i) {
+                emit.emit(DUP); // Дублируем ссылку на массив
+                emit.iconst(i); // Индекс
+                generateExpr(node->block[i]); // Значение элемента
+                    
+                // Сохраняем (Array Store)
+                if (elemType->base == BaseType::INT) emit.emit(IASTORE);
+                else if (elemType->base == BaseType::FLOAT) emit.emit(FASTORE);
+                else emit.emit(AASTORE); // Для String
+            }
+            // На стеке осталась ссылка на заполненный массив
+            break;
+        }
+
+        case NodeType::EXPR_DO_BLOCK: {
             if (node->decls) {
                 for (auto *decl : node->decls->decls) {
                     generateDecl(decl);
                 }
             }
             break;
-        
-        case NodeType::EXPR_CASTING:
+        }
+
+        case NodeType::EXPR_CASTING: {
             // Генерируем выражение, которое нужно скастить (например, Int)
             generateExpr(node->left);
 
@@ -95,6 +143,7 @@ void CodeGenerator::generateExpr(ExprNode *node) {
                 emit.emit(Opcode::I2F);
             }
             break;
+        }
     }
 }
 

@@ -8,22 +8,16 @@ import java.util.regex.Pattern;
 public class HaskellRuntime {
     private static final Scanner scanner = new Scanner(System.in).useLocale(Locale.US);
 
-    /** ========== ВВОД ========== */
+
+
+    /* ========== ВВОД ========== */
 
     // Примитивы
-    public static int readInt() {
-        return scanner.nextInt();
-    }
+    public static int readInt() { return scanner.nextInt(); }
+    public static float readFloat() { return scanner.nextFloat(); }
+    public static String readString() { return scanner.next(); }
 
-    public static float readFloat() {
-        return scanner.nextFloat();
-    }
-
-    public static String readString() {
-        return scanner.next();
-    }
-
-    // Массивы (парсинг строки вида [1,2,3])
+    // Массивы
     public static int[] readArrayInt() {
         String line = readCleanLine();
         if (line.isEmpty() || line.equals("[]")) return new int[0];
@@ -79,7 +73,8 @@ public class HaskellRuntime {
     }   
 
 
-    /** ========== ВЫВОД ========== */ 
+
+    /* ========== ВЫВОД ========== */ 
 
     public static void print(String s)     { System.out.println(s); }
     public static void print(int i)        { System.out.println(i); }
@@ -88,4 +83,31 @@ public class HaskellRuntime {
     public static void print(int[] arr)    { System.out.println(Arrays.toString(arr)); }
     public static void print(float[] arr)  { System.out.println(Arrays.toString(arr)); }
     public static void print(String[] arr) { System.out.println(Arrays.toString(arr)); }
+
+
+
+    /* ========== ФУНКЦИИ ДЛЯ РАБОТЫ С МАССИВАМИ ========== */
+    // HEAD
+    public static int head(int[] arr) { return arr[0]; }
+    public static float head(float[] arr) { return arr[0]; }
+    public static String head(String[] arr) { return arr[0]; }
+
+    // LAST
+    public static int last(int[] arr) { return arr[arr.length - 1]; }
+    public static float last(float[] arr) { return arr[arr.length - 1]; }
+    public static String last(String[] arr) { return arr[arr.length - 1]; }
+
+    // TAIL (возвращает копию без первого элемента)
+    public static int[] tail(int[] arr) {
+        if (arr.length == 0) return arr;
+        return Arrays.copyOfRange(arr, 1, arr.length);
+    }
+    public static float[] tail(float[] arr) {
+        if (arr.length == 0) return arr;
+        return Arrays.copyOfRange(arr, 1, arr.length);
+    }
+    public static String[] tail(String[] arr) {
+        if (arr.length == 0) return arr;
+        return Arrays.copyOfRange(arr, 1, arr.length);
+    }
 }

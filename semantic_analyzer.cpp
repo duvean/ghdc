@@ -262,39 +262,46 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
             break;
         }
 
-        // 1. Проверяем, является ли это числом (начинается с цифры или минуса)
-        bool isNumeric = !node->value.empty() && 
-                        (isdigit(node->value[0]) || (node->value[0] == '-' && node->value.size() > 1 && isdigit(node->value[1])));
+        // 1. ПЕРВООЧЕРЕДНАЯ ПРОВЕРКА: Если есть кавычки - это точно STRING
+        if (node->value.front() == '"' && node->value.back() == '"') {
+            node->inferredType = SemanticType::String();
+            
+            // Убираем кавычки для Constant Pool
+            std::string cleanValue = node->value.substr(1, node->value.size() - 2);
+            node->constPoolIndex = constPool.addStringLiteral(cleanValue);
+            break;
+        }
 
-        if (isNumeric) {
-            // Если это число и в нем есть точка - это Float
+        // 2. ПРОВЕРКА НА ЧИСЛО: Теперь проверяем, что ВСЯ строка числовая
+        // (начинается с цифры или минуса, и не содержит лишнего)
+        auto isFullNumeric = [](const std::string& s) {
+            if (s.empty()) return false;
+            size_t start = (s[0] == '-' && s.size() > 1) ? 1 : 0;
+            bool hasDot = false;
+            for (size_t i = start; i < s.size(); ++i) {
+                if (s[i] == '.') {
+                    if (hasDot) return false; // Две точки - это не число
+                    hasDot = true;
+                } else if (!isdigit(s[i])) {
+                    return false; // Любой другой символ (буква, пробел) делает это строкой
+                }
+            }
+            return true;
+        };
+
+        if (isFullNumeric(node->value)) {
             if (node->value.find('.') != std::string::npos) {
                 node->inferredType = SemanticType::Float();
-                try {
-                    float val = std::stof(node->value);
-                    node->constPoolIndex = constPool.addFloat(val);
-                } catch (...) {
-                    // На случай уёбков которые прошли isNumeric, но не парсятся
-                    node->inferredType = SemanticType::String();
-                    node->constPoolIndex = constPool.addStringLiteral(node->value);
-                }
-            } 
-            // Если точек нет - это Int
-            else {
+                node->constPoolIndex = constPool.addFloat(std::stof(node->value));
+            } else {
                 node->inferredType = SemanticType::Int();
                 node->constPoolIndex = constPool.addInteger(std::stoi(node->value));
             }
         } 
-        // 2. Если это не число - значит String
         else {
+            // 3. Если не в кавычках и не число (id или чертовщина от юзера)
             node->inferredType = SemanticType::String();
-            
-            std::string cleanValue = node->value;
-            if (cleanValue.size() >= 2 && cleanValue.front() == '"' && cleanValue.back() == '"') {
-                cleanValue = cleanValue.substr(1, cleanValue.size() - 2);
-            }
-            
-            node->constPoolIndex = constPool.addStringLiteral(cleanValue);
+            node->constPoolIndex = constPool.addStringLiteral(node->value);
         }
         break;
     }
@@ -363,6 +370,15 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
                 }
             }
         }
+        // --- Доступ к элементу массива ---
+        else if (node->op == "!!") {
+            // Left: [T], Right: Int, Result: T
+            if (node->left->inferredType->kind == TypeKind::LIST) {
+                node->inferredType = node->left->inferredType->subType;
+            } else {
+                node->inferredType = SemanticType::Unknown(); 
+            }
+        }
         // --- Арифметика ---
         else {
             // Проверяем BaseType, так как теперь это структура
@@ -400,12 +416,18 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
         if (!node->block.empty()) {
             analyzeExpr(node->block[0]);
             elemType = node->block[0]->inferredType;
-            for (auto* item : node->block) analyzeExpr(item);
-        } 
-        // Если список пустой [], а мы знаем, что функция должна вернуть [Float]
-        // Нам нужен механизм передачи "ожидаемого типа" вниз по дереву.
-        
+
+            for (size_t i = 1; i < node->block.size(); ++i) {
+                analyzeExpr(node->block[i]);
+            }
+        }
+
         node->inferredType = SemanticType::List(elemType);
+
+        if (node->inferredType->subType &&
+            node->inferredType->subType->base == BaseType::STRING) {
+            node->constPoolIndex = constPool.addClass("java/lang/String");
+        }
         break;
     }
 
@@ -435,14 +457,18 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
         bool isBuiltin = false; // Флаг, что функция из HaskellRuntime
 
         // Специальная логика для head/tail (динамическая сигнатура)
-        if ((name == "head" || name == "tail" || name == "isNull") && !allArgs.empty()) {
+        if  ((name == "head" 
+            || name == "tail" 
+            || name == "last" 
+            || name == "isNull") 
+            && !allArgs.empty()) {
             SemanticType* argType = allArgs[0]->inferredType;
             
             // Работаем только если аргумент - список
             if (argType && argType->kind == TypeKind::LIST) {
                 sig.paramTypes = { argType };
                 
-                if (name == "head") 
+                if (name == "head" || name == "last")
                     sig.returnType = argType->subType;
                 else if (name == "tail") 
                     sig.returnType = argType;
@@ -645,6 +671,7 @@ void SemanticAnalyzer::initBuiltins() {
     builtinSignatures["isNull"] = { {}, SemanticType::Bool() };
     builtinSignatures["head"] = { {}, SemanticType::Unknown() };
     builtinSignatures["tail"] = { {}, SemanticType::Unknown() };
+    builtinSignatures["last"] = { {}, SemanticType::Unknown() };
 
 
     // MAP

@@ -3,18 +3,23 @@
 #include <cstdint>
 
 enum Opcode : uint8_t {
-    ICONST_0 = 0x03, ICONST_1 = 0x04,
-    BIPUSH   = 0x10, LDC      = 0x12,
-    ILOAD    = 0x15, ISTORE   = 0x36,
-    FLOAD    = 0x17, FSTORE   = 0x38,
-    ALOAD    = 0x19, ASTORE   = 0x3A,
-    IADD     = 0x60, ISUB     = 0x64,
-    FADD     = 0x62, FSUB     = 0x66,
-    IMUL     = 0x68, IDIV     = 0x6C,   
-    FMUL     = 0x6A, FDIV     = 0x6E,
-    IRETURN  = 0xAC, ARETURN  = 0xB0, 
-    RETURN   = 0xB1, FRETURN  = 0xAE,
-    INVOKESTATIC = 0xB8, I2F  = 0x86
+    ICONST_0 = 0x03, ICONST_1  = 0x04,
+    BIPUSH   = 0x10, LDC       = 0x12,
+    ILOAD    = 0x15, ISTORE    = 0x36,
+    FLOAD    = 0x17, FSTORE    = 0x38,
+    ALOAD    = 0x19, ASTORE    = 0x3A,
+    IADD     = 0x60, ISUB      = 0x64,
+    FADD     = 0x62, FSUB      = 0x66,
+    IMUL     = 0x68, IDIV      = 0x6C,   
+    FMUL     = 0x6A, FDIV      = 0x6E,
+    IRETURN  = 0xAC, ARETURN   = 0xB0, 
+    RETURN   = 0xB1, FRETURN   = 0xAE,
+    DUP      = 0x59, I2F       = 0x86,
+    NEWARRAY = 0xBC, ANEWARRAY = 0xBD,
+    IASTORE  = 0x4F, AASTORE   = 0x53,
+    FASTORE  = 0x51,
+    IALOAD = 0x2E, FALOAD = 0x30, AALOAD = 0x32,
+    INVOKESTATIC = 0xB8
 };
 
 class BytecodeEmitter {
