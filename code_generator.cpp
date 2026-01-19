@@ -26,8 +26,14 @@ void CodeGenerator::generateExpr(ExprNode *node) {
 
     switch (node->type) {
         case NodeType::EXPR_LITERAL:
-            if (node->inferredType->base == BaseType::INT) {
-                emit.iconst(std::stoi(node->value));
+            if (node->inferredType->base == BaseType::INT || node->inferredType->base == BaseType::BOOL) {
+                // Если значение "True"/"False", мы уже положили 1/0 в константы или можем распарсить
+                int val = 0;
+                if (node->value == "True") val = 1;
+                else if (node->value == "False") val = 0;
+                else val = std::stoi(node->value);
+
+                emit.iconst(val);
             }
             else if (node->inferredType->base == BaseType::FLOAT) {
                 emit.emitU1(LDC, (uint8_t)node->constPoolIndex);
@@ -56,6 +62,7 @@ void CodeGenerator::generateExpr(ExprNode *node) {
         }
 
         case NodeType::EXPR_BINARY: {
+            // Доступ к элементу массива
             if (node->op == "!!") {
                 generateExpr(node->left);  // На стек: Ссылка на массив (Ref)
                 generateExpr(node->right); // На стек: Индекс (Int)
@@ -70,42 +77,56 @@ void CodeGenerator::generateExpr(ExprNode *node) {
                 return;
             }
 
-            else if (node->op == "==" || node->op == "<" || node->op == ">" || node->op == "<=") {
+            // Логические
+            else if (node->op == "&&") {
+                generateExpr(node->left);
+                generateExpr(node->right);
+                emit.emit(IAND);
+                return;
+            }
+            else if (node->op == "||") {
+                generateExpr(node->left);
+                generateExpr(node->right);
+                emit.emit(IOR);
+                return;
+            }
+
+            // Сравнения
+            else if (node->op == "==" || node->op == "<" || node->op == ">" || 
+                    node->op == "<=" || node->op == "!=" || node->op == ">=") {
+                
                 generateExpr(node->left);
                 generateExpr(node->right);
 
-                // Выбираем инструкцию в зависимости от типа операндов
                 bool isFloat = (node->left->inferredType->base == BaseType::FLOAT);
                 
                 if (isFloat) {
-                    // Для Float используется FCMPG (результат: -1, 0, или 1 на стеке)
-                    emit.emit(FCMPG);
-                    // Теперь на стеке int, сравниваем его с нулем ниже
+                    emit.emit(FCMPG); // stack: -1, 0, 1
                 }
 
-                // Если условие верно, прыгаем на SET_1, иначе SET_0
+                // Выбираем инструкцию перехода
                 uint8_t opcode;
                 if (isFloat) {
-                    // После FCMPG мы проверяем результат сравнения с 0
-                    if      (node->op == "==")  opcode = IFEQ;
-                    else if (node->op == "<")   opcode = IFLT;
-                    else if (node->op == ">")   opcode = IFGT;
-                    else                        opcode = IFLE;
+                    // Сравнение результата FCMPG с нулем
+                    if      (node->op == "==") opcode = IFEQ; // 0 == 0
+                    else if (node->op == "!=") opcode = IFNE; // != 0
+                    else if (node->op == "<")  opcode = IFLT; // -1 < 0
+                    else if (node->op == ">")  opcode = IFGT; // 1 > 0
+                    else if (node->op == "<=") opcode = IFLE; // -1 or 0
+                    else                       opcode = IFGE; // 1 or 0 (>=)
                 } else {
-                    // Для Int используем прямые сравнения IF_ICMPxx
-                    if      (node->op == "==")  opcode = IF_ICMPEQ;
-                    else if (node->op == "<")   opcode = IF_ICMPLT;
-                    else if (node->op == ">")   opcode = IF_ICMPGT;
-                    else                        opcode = IF_ICMPLE;
+                    // INT сравнения (stack: v1, v2 -> jump)
+                    if      (node->op == "==") opcode = IF_ICMPEQ;
+                    else if (node->op == "!=") opcode = IF_ICMPNE;
+                    else if (node->op == "<")  opcode = IF_ICMPLT;
+                    else if (node->op == ">")  opcode = IF_ICMPGT;
+                    else if (node->op == "<=") opcode = IF_ICMPLE;
+                    else                       opcode = IF_ICMPGE;
                 }
 
-                // 1. Запоминаем адрес НАЧАЛА инструкции (самого опкода)
+                // Генерация ветвления (True/False -> 1/0)
                 size_t jumpOpAddr = emit.getCurrentOffset(); 
-                
-                // 2. Опкод + 2 байта заглушки
                 emit.emitU2(opcode, 0); 
-                
-                // 3. Адрес для патча - это байты сразу после опкода
                 size_t patchAddr = jumpOpAddr + 1;
 
                 // Ветка FALSE
@@ -119,10 +140,9 @@ void CodeGenerator::generateExpr(ExprNode *node) {
                 emit.patchU2(patchAddr, (uint16_t)(trueTarget - jumpOpAddr));
                 emit.iconst(1);
 
-                // Конец, сюда прыгает GOTO
+                // Конец
                 size_t endTarget = emit.getCurrentOffset();
                 emit.patchU2(gotoPatchAddr, (uint16_t)(endTarget - gotoOpAddr));
-
                 return;
             }
 
@@ -131,13 +151,13 @@ void CodeGenerator::generateExpr(ExprNode *node) {
             generateExpr(node->right);
 
             if (node->inferredType->base == BaseType::FLOAT) {
-                if (node->op == "+") emit.emit(Opcode::FADD);
+                if      (node->op == "+") emit.emit(Opcode::FADD);
                 else if (node->op == "-") emit.emit(Opcode::FSUB);
                 else if (node->op == "*") emit.emit(Opcode::FMUL);
                 else if (node->op == "/") emit.emit(Opcode::FDIV);
             } 
             else { // INT
-                if (node->op == "+") emit.emit(Opcode::IADD);
+                if      (node->op == "+") emit.emit(Opcode::IADD);
                 else if (node->op == "-") emit.emit(Opcode::ISUB);
                 else if (node->op == "*") emit.emit(Opcode::IMUL);
                 else if (node->op == "/") emit.emit(Opcode::IDIV);

@@ -272,7 +272,16 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
             break;
         }
 
-        // 2. ПРОВЕРКА НА ЧИСЛО: Теперь проверяем, что ВСЯ строка числовая
+        // 2. ПРОВЕРКА НА БУЛ
+        if (node->value == "True" || node->value == "False") {
+            node->inferredType = SemanticType::Bool();
+            // В байткоде Bool — это Int (0 или 1)
+            int val = (node->value == "True" ? 1 : 0);
+            node->constPoolIndex = constPool.addInteger(val); 
+            break;
+        }
+
+        // 3. ПРОВЕРКА НА ЧИСЛО: Теперь проверяем, что ВСЯ строка числовая
         // (начинается с цифры или минуса, и не содержит лишнего)
         auto isFullNumeric = [](const std::string& s) {
             if (s.empty()) return false;
@@ -350,14 +359,26 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
 
         if (!lType || !rType) return;
 
+        // --- Логические операторы (&&, ||) ---
+        if (node->op == "&&" || node->op == "||") {
+            if (lType->base != BaseType::BOOL || rType->base != BaseType::BOOL) {
+                std::cerr << "[Semantic Error]: Logical ops require Bool, got " 
+                        << lType->typeName << " and " << rType->typeName << "\n";
+            }
+            node->inferredType = SemanticType::Bool();
+        }
+
         // --- Оператор CONS (:) ---
         if (node->op == ":") {
             // Результат - всегда список типа головы
             node->inferredType = SemanticType::List(lType);
             // Тут можно добавить проверку: rType должен быть List(lType)
         }
-        // --- Сравнения ---
-        else if (node->op == "<=" || node->op == "==" || node->op == ">" || node->op == "<") {
+
+        // --- Сравнения (расширенный список) ---
+        else if (node->op == "<=" || node->op == "==" || node->op == ">" || 
+                node->op == "<"  || node->op == "!=" || node->op == ">=") {
+            
             node->inferredType = SemanticType::Bool();
 
             // Авто-каст для примитивов (Int -> Float)
@@ -370,6 +391,7 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
                 }
             }
         }
+
         // --- Доступ к элементу массива ---
         else if (node->op == "!!") {
             // Left: [T], Right: Int, Result: T
