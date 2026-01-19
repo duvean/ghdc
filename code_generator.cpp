@@ -77,6 +77,17 @@ void CodeGenerator::generateExpr(ExprNode *node) {
                 return;
             }
 
+            // Cons (x : xs)
+            if (node->op == ":") {
+                generateExpr(node->left);  // Head
+                generateExpr(node->right); // Tail (List)
+                
+                // Вызываем HaskellRuntime.cons
+                // Индекс уже сохранен в семантике
+                emit.emitU2(INVOKESTATIC, (uint16_t)node->constPoolIndex);
+                return;
+            }
+
             // Логические
             else if (node->op == "&&") {
                 generateExpr(node->left);

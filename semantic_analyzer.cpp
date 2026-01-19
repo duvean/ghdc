@@ -369,10 +369,28 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
         }
 
         // --- Оператор CONS (:) ---
-        if (node->op == ":") {
-            // Результат - всегда список типа головы
-            node->inferredType = SemanticType::List(lType);
-            // Тут можно добавить проверку: rType должен быть List(lType)
+        else if (node->op == ":") {
+            // Ожидаем: elem : [elem]
+            if (rType->kind == TypeKind::LIST) {
+                // Тут можно добавить строгую проверку lType == rType->subType
+            } else {
+                std::cerr << "[Semantic] Error: Right side of ':' must be a list\n";
+            }
+            // Результат - это тип правого операнда (список)
+            node->inferredType = rType;
+            
+            // Добавляем MethodRef в пул констант заранее
+            std::string runtimeMethod = "cons";
+            std::string descriptor;
+            
+            if (lType->base == BaseType::INT) {
+                descriptor = "(I[I)[I";
+            } else if (lType->base == BaseType::FLOAT) {
+                descriptor = "(F[F)[F";
+            } else {
+                descriptor = "(Ljava/lang/String;[Ljava/lang/String;)[Ljava/lang/String;";
+            }
+            node->constPoolIndex = constPool.addMethodRef("HaskellRuntime", runtimeMethod, descriptor);
         }
 
         // --- Сравнения (расширенный список) ---

@@ -110,4 +110,26 @@ public class HaskellRuntime {
         if (arr.length == 0) return arr;
         return Arrays.copyOfRange(arr, 1, arr.length);
     }
+
+    // CONS (:) (добавляет значение в массив)
+    public static int[] cons(int head, int[] tail) {
+        int[] result = new int[tail.length + 1];
+        result[0] = head;
+        System.arraycopy(tail, 0, result, 1, tail.length);
+        return result;
+    }
+
+    public static float[] cons(float head, float[] tail) {
+        float[] result = new float[tail.length + 1];
+        result[0] = head;
+        System.arraycopy(tail, 0, result, 1, tail.length);
+        return result;
+    }
+
+    public static String[] cons(String head, String[] tail) {
+        String[] result = new String[tail.length + 1];
+        result[0] = head;
+        System.arraycopy(tail, 0, result, 1, tail.length);
+        return result;
+    }
 }
