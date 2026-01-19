@@ -332,6 +332,117 @@ void CodeGenerator::generateDecl(DeclNode *node) {
     }
 }
 
+// Возвращает адрес (offset) инструкции GOTO, которую нужно пропатчить, 
+// если паттерн НЕ совпал (переход к следующему телу)
+std::vector<size_t> CodeGenerator::generatePatternChecks(ASTNode* paramsList) {
+    std::vector<size_t> failJumps;
+    if (!paramsList) return failJumps;
+
+    // Приводим к списку узлов (DeclListNode или как он у тебя назван)
+    auto* declList = dynamic_cast<DeclListNode*>(paramsList);
+    if (!declList) return failJumps;
+
+    for (size_t i = 0; i < declList->decls.size(); ++i) {
+        // Каждый параметр функции - это VarDeclNode
+        auto* varDecl = dynamic_cast<DeclNode*>(declList->decls[i]);
+        if (varDecl && varDecl->expr) {
+            // Вот тут мы достаем сам паттерн (PATT_VAR, PATT_CONS и т.д.)
+            size_t patchAddr = matchPattern(dynamic_cast<ExprNode*>(varDecl->expr), (int)i);
+            if (patchAddr > 0) failJumps.push_back(patchAddr);
+        }
+    }
+    return failJumps;
+}
+
+size_t CodeGenerator::matchPattern(ExprNode* pattern, int argLocIdx) {
+    if (!pattern) return 0;
+
+    if (pattern->type == NodeType::EXPR_PATTERN_VAR) {
+        // Если это просто 'insert x', то x уже лежит в argLocIdx.
+        // Семантика должна была присвоить pattern->localVarIndex = argLocIdx.
+        // Никакого кода генерировать не нужно.
+        return 0; 
+    }
+
+    if (pattern->type == NodeType::EXPR_PATTERN_LIST) {
+        // [] - проверяем, что аргумент под индексом argLocIdx имеет длину 0
+        emit.emitU1(0x19, (uint8_t)argLocIdx); // ALOAD
+        emit.emit(0xBE); // ARRAYLENGTH
+        size_t offset = emit.getCurrentOffset();
+        emit.emitU2(0x9A, 0); // IFNE -> прыжок к следующему телу, если длина != 0
+        return offset;
+    }
+
+    if (pattern->type == NodeType::EXPR_PATTERN_CONS) {
+        // (x:xs) - проверяем длину > 0
+        emit.emitU1(0x19, (uint8_t)argLocIdx); // ALOAD
+        emit.emit(0xBE); 
+        size_t offset = emit.getCurrentOffset();
+        emit.emitU2(0x99, 0); // IFEQ -> прыжок к следующему телу, если длина == 0
+
+        // Извлекаем x (Head)
+        emit.emitU1(0x19, (uint8_t)argLocIdx); 
+        emit.emit(0x03); // ICONST_0
+        
+        // Выбираем тип загрузки в зависимости от типа элемента
+        if (pattern->left->inferredType->base == BaseType::FLOAT) {
+            emit.emit(0x30); // FALOAD
+            emit.emitU1(0x38, (uint8_t)pattern->left->localVarIndex); // FSTORE
+        } else if (pattern->left->inferredType->base == BaseType::INT || pattern->left->inferredType->base == BaseType::BOOL) {
+            emit.emit(0x2E); // IALOAD
+            emit.emitU1(0x36, (uint8_t)pattern->left->localVarIndex); // ISTORE
+        } else {
+            emit.emit(0x32); // AALOAD
+            emit.emitU1(0x3A, (uint8_t)pattern->left->localVarIndex); // ASTORE
+        }
+
+        // Извлекаем xs (Tail)
+        // Генерируем правильный дескриптор для tail
+        std::string tailDesc = "(" + pattern->inferredType->getDescriptor() + ")" + pattern->inferredType->getDescriptor();
+        int tailRef = cp.addMethodRef("HaskellRuntime", "tail", tailDesc);
+        
+        emit.emitU1(0x19, (uint8_t)argLocIdx);
+        emit.emitU2(0xB8, (uint16_t)tailRef); // INVOKESTATIC
+        emit.emitU1(0x3A, (uint8_t)pattern->right->localVarIndex); // ASTORE
+
+        return offset;
+    }
+    
+    return 0;
+}
+
+void CodeGenerator::generateFullMethod(JvmMethod& method) {
+    std::vector<size_t> lastBodyNextJumps;
+
+    for (size_t i = 0; i < method.bodies.size(); ++i) {
+        DeclNode* bodyDecl = method.bodies[i];
+        
+        // 1. Генерируем проверки для этого тела
+        std::vector<size_t> currentMatchFails = generatePatternChecks(bodyDecl->paramsList);
+        
+        // 2. Генерируем само выражение (тело)
+        generateExpr(bodyDecl->expr);
+        
+        // 3. Генерируем возврат
+        emit.emit(getReturnOpcode(method.descriptor));
+
+        // 4. Патчим все переходы "не совпало" на текущую позицию
+        size_t nextBodyStart = emit.getCurrentOffset();
+        for (size_t patchAddr : currentMatchFails) {
+            if (patchAddr > 0) {
+                // Прыжок на начало проверки следующего тела
+                emit.patchU2(patchAddr + 1, (uint16_t)(nextBodyStart - patchAddr));
+            }
+        }
+    }
+
+    // 5. Если дошли сюда — ни один паттерн не подошел. 
+    // Кидаем ошибку рантайма или просто возвращаем дефолт (для безопасности)
+    emitDefaultReturn(method.descriptor);
+}
+
+
+
 uint8_t CodeGenerator::getStoreOpcode(SemanticType* type) {
     // Если это список или объект
     if (type->kind == TypeKind::LIST || type->base == BaseType::STRING) {
@@ -376,4 +487,21 @@ uint8_t CodeGenerator::getReturnOpcode(const std::string &descriptor)
         case 'J': return 0xAD; // LRETURN (long)
         default: return 0xB1;
     }
+}
+
+void CodeGenerator::emitDefaultReturn(const std::string& descriptor) {
+    uint8_t op = getReturnOpcode(descriptor);
+    
+    if (op == 0xAC) { // IRETURN (Int, Bool)
+        emit.emit(0x03); // ICONST_0
+    } 
+    else if (op == 0xAE) { // FRETURN (Float)
+        emit.emit(0x0B); // FCONST_0
+    }
+    else if (op == 0xB0) { // ARETURN (Массивы/Объекты)
+        emit.emit(0x01); // ACONST_NULL
+    }
+    // Если void (0xB1), ничего класть не нужно
+
+    emit.emit(op);
 }

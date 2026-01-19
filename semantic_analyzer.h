@@ -31,7 +31,7 @@ private:
     void analyzeDeclList(DeclListNode* list);
     void analyzeDecl(DeclNode* node);
     void analyzeExpr(ExprNode* node);
-    void analyzePattern(ExprNode* pattern, SemanticType* expectedType, int& sourceLocalIndex);
+    void analyzePattern(ExprNode* pattern, SemanticType* expectedType, int& localIdx, int argIdx = -1);
 
     void collectTypes(ASTNode* node, std::vector<SemanticType*>& types);
     void flattenCall(ExprNode* node, std::vector<ExprNode*>& args, ExprNode** finalFunc);

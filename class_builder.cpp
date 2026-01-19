@@ -1,45 +1,47 @@
 #include "class_builder.h"
+#include "code_generator.h"
 
 bool ClassBuilder::build() {
-    prepareConstants();
+    // 1. Подготавливаем индексы имен для всех методов
+    for (auto& method : jvmClass->methods) {
+        method.nameIdx = jvmClass->cp.addUtf8(method.name);
+        method.descIdx = jvmClass->cp.addUtf8(method.descriptor);
+    }
 
+    // 2. Генерируем байткод (наполняем пул метод рефами)
+    for (auto& method : jvmClass->methods) {
+        // Пропускаем конструктор и нативный main   
+        if (method.name != "<init>" && method.name != "main") {
+            std::vector<uint8_t> methodBytecode;
+            CodeGenerator methodGen(jvmClass->cp, methodBytecode);
+            methodGen.generateFullMethod(method);
+            method.bytecode = methodBytecode; 
+        }
+    }
+
+    // 3. Теперь, когда пул констант полностью укомплектован, открываем файл
     out.open(filename, std::ios::binary);
     if (!out.is_open()) return false;
 
-    // 1. Magic Number (0xCAFEBABE)
     writeU4(0xCAFEBABE);
-
-    // 2. Version (Java 6 = 50.0 -> Major 50, Minor 0)
     writeU2(0);  // Minor
-    writeU2(50); // Major
+    writeU2(49); // Major
 
-    // 3. Constant Pool
-    writeConstantPool();
+    // Теперь это запишет ПОЛНЫЙ пул констант, включая tail и cons
+    writeConstantPool(); 
 
-    // 4. Access Flags
-    // ACC_PUBLIC (0x0001) + ACC_SUPER (0x0020) = 0x0021
-    writeU2(0x0021);
-
-    // 5. This Class Index (#3 в вашем примере)
+    writeU2(0x0021); // Access Flags
     writeU2(static_cast<uint16_t>(jvmClass->classIdx));
-
-    // 6. Super Class Index (#5 в вашем примере)
     writeU2(static_cast<uint16_t>(jvmClass->superIdx));
+    writeU2(0); // Interfaces
+    writeU2(0); // Fields
 
-    // 7. Interfaces Count (0)
-    writeU2(0);
-
-    // 8. Fields Count (0)
-    writeU2(0);
-
-    // 9. Methods
+    // 3. ЗАПИСЬ МЕТОДОВ
+    // Теперь writeMethods должен просто брать уже готовый method.bytecode
     writeMethods();
 
-    // 10. Class Attributes (SourceFile и т.д.) - пока 0
-    writeU2(0);
-
+    writeU2(0); // Attributes
     out.close();
-    std::cout << "[ClassBuilder] Successfully wrote " << filename << "\n";
     return true;
 }
 
@@ -110,59 +112,34 @@ void ClassBuilder::writeConstantPool() {
 }
 
 void ClassBuilder::writeMethods() {
-    // Количество методов
     writeU2(static_cast<uint16_t>(jvmClass->methods.size()));
 
     for (const auto& method : jvmClass->methods) {
         writeU2(static_cast<uint16_t>(method.accessFlags));
         writeU2(static_cast<uint16_t>(method.nameIdx));
         writeU2(static_cast<uint16_t>(method.descIdx));
+        writeU2(1); // Attributes Count
 
-        // --- ATTRIBUTES (Code) ---
-        // Каждый неабстрактный метод должен иметь атрибут "Code"
-        writeU2(1); // Attributes Count = 1 (только Code)
+        writeU2(1); // Name "Code"
 
-        // 1. Ищем индекс строки "Code" в Constant Pool
-        int codeNameIdx = 1; // Он всегда #1 хардкодом но можно сделать поиск на всякий
-
-        writeU2(codeNameIdx); // Attribute Name Index
-
-        // --- ГЕНЕРАЦИЯ БАЙТКОДА (Заглушка) ---
         std::vector<uint8_t> bytecode;
-        
         if (method.name == "<init>") {
-            // Оставляем вашу ручную логику для конструктора
-            bytecode = { 0x2A, 0xB7, 0x00, 0x09, 0xB1 }; 
-        } 
-        else if (method.name == "main" && method.descriptor.find("([L") != std::string::npos) {
-            // Оставляем синтетический main (вызов haskellMain)
+            bytecode = { 0x2A, 0xB7, 0x00, 0x09, 0xB1 };
+        } else if (method.name == "main" && method.descriptor.find("([L") != std::string::npos) {
             int targetRef = jvmClass->cp.addMethodRef(jvmClass->className, "haskellMain", "()V");
-            bytecode = { 
-                0xB8, (uint8_t)(targetRef >> 8), (uint8_t)(targetRef & 0xFF), 
-                0xB1 
-            };
-        } 
-        else {
-            // ДЛЯ ВСЕХ ОСТАЛЬНЫХ (haskellMain, insert, findMin):
-            // Берем то, что сгенерировал CodeGenerator
+            bytecode = { 0xB8, (uint8_t)(targetRef >> 8), (uint8_t)(targetRef & 0xFF), 0xB1 };
+        } else {
             bytecode = method.bytecode;
-
-            // Если ничего нет то поплачем и добавим ретёрн
-            if (bytecode.empty()) {
-                bytecode.push_back(getReturnOpcode(method.descriptor));
-            }
         }
 
-        // --- СЧИТАЕМ РАЗМЕР И ПИШЕМ ---
         uint32_t codeAttrLen = 2 + 2 + 4 + (uint32_t)bytecode.size() + 2 + 2;
         writeU4(codeAttrLen);
-        writeU2(10); // max_stack
-        writeU2(10); // max_locals
+        writeU2(20); // max_stack
+        writeU2(20); // max_locals
         writeU4((uint32_t)bytecode.size());
         writeBytes(bytecode);
-        
-        writeU2(0); // exception_table
-        writeU2(0); // attributes_count (внутри Code)
+        writeU2(0); // exceptions
+        writeU2(0); // attributes
     }
 }
 

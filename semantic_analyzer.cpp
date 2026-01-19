@@ -158,15 +158,20 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
 
         // 3. Подготовка к анализу тела
         symbolTable.clear();
-        int currentLocalIdx = 0;
+
+        // Сначала регистрируем сами аргументы в таблице символов
+        // Чтобы к ним можно было обращаться по именам, если это просто переменные
+        // localIdx для новых переменных в паттернах начнется ПОСЛЕ аргументов
+        int numArgs = (int)sig.paramTypes.size();
+        int nextFreeSlot = numArgs;
 
         // 4. Анализ аргументов (Паттерны)
         if (node->paramsList) {
             auto* declList = dynamic_cast<DeclListNode*>(node->paramsList);
             for (size_t i = 0; i < declList->decls.size(); ++i) {
-                if (i < sig.paramTypes.size()) {
-                    analyzePattern(declList->decls[i]->expr, sig.paramTypes[i], currentLocalIdx);
-                }
+                // i - индекс аргумента
+                // nextFreeSlot - это куда будут выгружаться части паттерна (x, xs)
+                analyzePattern(declList->decls[i]->expr, sig.paramTypes[i], nextFreeSlot, (int)i);
             }
         }
 
@@ -610,27 +615,22 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
     }
 }
 
-void SemanticAnalyzer::analyzePattern(ExprNode* pattern, SemanticType* expectedType, int& localIdx) {
-    if (!pattern || !expectedType) return;
-
-    // Устанавливаем тип самому узлу паттерна (убираем ?)
+void SemanticAnalyzer::analyzePattern(ExprNode* pattern, SemanticType* expectedType, int& nextSlot, int argIdx) {
+    if (!pattern) return;
     pattern->inferredType = expectedType;
 
     if (pattern->type == EXPR_PATTERN_VAR) {
-        // Добавляем переменную в таблицу символов
-        symbolTable[pattern->name] = LocalVariable(expectedType, localIdx);
-        pattern->localVarIndex = localIdx++; // Инкрементируем ссылку
+        // Если это верхний уровень (argIdx != -1), привязываем к аргументу
+        // Иначе (это x или xs) - выделяем новый слот
+        int finalIdx = (argIdx != -1) ? argIdx : nextSlot++;
+        
+        pattern->localVarIndex = finalIdx;
+        symbolTable[pattern->name] = LocalVariable(expectedType, finalIdx);
     }
     else if (pattern->type == EXPR_PATTERN_CONS) {
-        if (expectedType->kind == TypeKind::LIST) {
-            // x : xs -> x получает тип элемента, xs получает тип списка
-            analyzePattern(pattern->left, expectedType->subType, localIdx);
-            analyzePattern(pattern->right, expectedType, localIdx);
-        }
-    }
-    else if (pattern->type == EXPR_PATTERN_LIST) {
-        // Для пустого списка [] просто подтверждаем, что это список нужного типа
-        // Новых переменных не создаем, localIdx не меняем
+        // x : xs всегда выгружаются в НОВЫЕ слоты, чтобы не портить аргумент-массив
+        analyzePattern(pattern->left, expectedType->subType, nextSlot, -1);
+        analyzePattern(pattern->right, expectedType, nextSlot, -1);
     }
 }
 
