@@ -3,6 +3,7 @@ import java.util.Arrays;
 import java.util.Locale;
 import java.util.Scanner;
 import java.util.ArrayList;
+import java.lang.reflect.Array;
 import java.util.regex.Pattern;
 
 public class HaskellRuntime {
@@ -76,13 +77,15 @@ public class HaskellRuntime {
 
     /* ========== ВЫВОД ========== */ 
 
-    public static void print(String s)     { System.out.println(s); }
     public static void print(int i)        { System.out.println(i); }
     public static void print(float f)      { System.out.println(f); }
+    public static void print(String s)     { System.out.println(s); }
     public static void print(Object o)     { System.out.println(o); }
     public static void print(int[] arr)    { System.out.println(Arrays.toString(arr)); }
     public static void print(float[] arr)  { System.out.println(Arrays.toString(arr)); }
     public static void print(String[] arr) { System.out.println(Arrays.toString(arr)); }
+    public static void print(Object[] arr) { System.out.println(Arrays.deepToString(arr)); }
+    
 
 
 
@@ -138,4 +141,42 @@ public class HaskellRuntime {
     public static boolean isNull(float[] arr) { return arr == null || arr.length == 0; }
     public static boolean isNull(String[] arr) { return arr == null || arr.length == 0; }
     public static boolean isNull(Object[] arr) { return arr == null || arr.length == 0; }
+
+
+
+    /* ========== УНИВЕРСАЛЬНЫЕ МЕТОДЫ ДЛЯ МНОГОМЕРНЫХ МАССИВОВ ========== */
+    
+    // HEAD
+    public static Object head(Object[] arr) {
+        return arr[0];
+    }
+
+    // LAST
+    public static Object last(Object[] arr) {
+        return arr[arr.length - 1];
+    }
+
+    // TAIL
+    public static Object[] tail(Object[] arr) {
+        if (arr.length == 0) return arr;
+        return Arrays.copyOfRange(arr, 1, arr.length);
+    }
+
+    // CONS
+    public static Object[] cons(Object head, Object[] tail) {
+        // 1. Узнаем реальный тип элементов массива tail
+        Class<?> componentType = tail.getClass().getComponentType();
+        
+        // 2. Создаем новый массив ТОГО ЖЕ ТИПА длиной N+1
+        Object[] result = (Object[]) Array.newInstance(componentType, tail.length + 1);
+        result[0] = head;
+        System.arraycopy(tail, 0, result, 1, tail.length);
+        
+        return result;
+    }
+    
+    // Взятие по индексу (!!)
+    public static Object get(Object[] arr, int index) {
+        return arr[index];
+    }
 }

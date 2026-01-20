@@ -56,47 +56,82 @@ void CodeGenerator::generateExpr(ExprNode *node) {
             break;
 
         case NodeType::EXPR_FUNC_CALL: {
-            // ПРОВЕРКА: Если этот узел - часть цепочки, и выше него есть другой CALL,
-            // то мы ничего не делаем в этом узле. Мы ждем, пока рекурсия дойдет до
-            // самого верхнего узла, где лежит полный список аргументов.
-            
-            // Если список сплющенных аргументов пуст, значит это "промежуточный" узел
             if (node->flattenedArgs.empty()) return; 
 
-            // Мы в корневом узле вызова (у которого заполнено flattenedArgs)
-            
-            // 1. Генерируем код для всех аргументов из списка
-            // Это положит их на стек в правильном порядке
+            // 1. Генерируем код для всех аргументов
             for (auto* arg : node->flattenedArgs) generateExpr(arg);
 
-            // 2. Находим базу функции (самый левый узел)
+            // 2. Находим базу функции
             ExprNode* baseFunc = node;
             while (baseFunc->function) baseFunc = baseFunc->function;
 
-            // 3. Формируем вызов
             std::string name = baseFunc->name;
-            // Убираем возможные пробелы из имени (как в семантике)
             if (name.find(' ') != std::string::npos) name = name.substr(0, name.find(' '));
 
-            // 4. Формируем дескриптор динамически
-            std::string descriptor;
+            // Проверка вложенности массива
+            auto isComplexArray = [](SemanticType* type) -> bool {
+                if (type->kind != TypeKind::LIST) return false;
+                return type->subType->kind == TypeKind::LIST;
+            };
 
-            if (name == "print" && !node->flattenedArgs.empty()) {
-                // Берем тип ПЕРВОГО аргумента (который реально лежит на стеке)
-                SemanticType* actualArgType = node->flattenedArgs[0]->inferredType;
-                descriptor = "(" + actualArgType->getDescriptor() + ")V";
+            // 3. Формируем дескриптор и флаги
+            std::string descriptor;
+            bool needCheckCast = false; // Нужно ли приведение типов после вызова
+            std::string targetClass = baseFunc->isBuiltinFunciton ? "HaskellRuntime" : "HaskellProgram";
+
+            // Логика выбора дескриптора
+            if (baseFunc->isBuiltinFunciton && name != "print") {
+                SemanticType* firstArgType = node->flattenedArgs[0]->inferredType;
+
+                if (name == "head" || name == "last" || name == "tail" || name == "get") {
+                    // Функции с одним аргументом-массивом
+                    if (isComplexArray(firstArgType)) {
+                        if (name == "tail") { // tail :: [a] -> [a]
+                            descriptor = "([Ljava/lang/Object;)[Ljava/lang/Object;";
+                        } else if (name == "get") { // get :: [a] -> Int -> a
+                            descriptor = "([Ljava/lang/Object;I)Ljava/lang/Object;";
+                        } else { // head/last :: [a] -> a
+                            descriptor = "([Ljava/lang/Object;)Ljava/lang/Object;";
+                        }
+                        needCheckCast = true;
+                    } else { // Для простых массивов берем сохраненную сигнатуру
+                        descriptor = baseFunc->inferredType->getDescriptor();
+                    }
+                }
+                else { // Другие встроенные функции    
+                    descriptor = baseFunc->inferredType->getDescriptor();
+                }
             } 
-            else {
-                // Для всех остальных функций (head, tail, reverse) используем то, 
-                // что сохранено в базовом узле функции
+            else if (name == "print" && !node->flattenedArgs.empty()) {
+                SemanticType* argType = node->flattenedArgs[0]->inferredType;
+                
+                if (isComplexArray(argType)) { // Для любого вложенного списка используем дескриптор Object[]
+                    descriptor = "([Ljava/lang/Object;)V";
+                } else { // Для плоских списков [Int] [Float] [String] оставляем как было
+                    descriptor = "(" + argType->getDescriptor() + ")V";
+                }
+            }
+            else { // Пользовательские функции
                 descriptor = baseFunc->inferredType->getDescriptor();
             }
 
-            std::string targetClass = baseFunc->isBuiltinFunciton ? "HaskellRuntime" : "HaskellProgram";
+            // 4. Добавляем метод в CP и генерируем вызов
             int methodRef = cp.addMethodRef(targetClass, name, descriptor);
-
-            // 5. Генерируем инструкцию вызова
             emit.emitU2(INVOKESTATIC, (uint16_t)methodRef);
+
+            // 5. Генерируем CHECKCAST
+            if (needCheckCast) {
+                std::string resultDesc = node->inferredType->getDescriptor();
+
+                std::string castType = resultDesc;
+                if (castType.size() > 2 && castType.front() == 'L' && castType.back() == ';') {
+                    castType = castType.substr(1, castType.size() - 2);
+                }
+
+                int classIdx = cp.addClass(castType);
+                emit.emitU2(0xC0, (uint16_t)classIdx); // Opcode: CHECKCAST
+            }
+            
             break;
         }
 
@@ -118,12 +153,48 @@ void CodeGenerator::generateExpr(ExprNode *node) {
 
             // Cons (x : xs)
             if (node->op == ":") {
+                // 1. Сначала кладём аргументы на стек
                 generateExpr(node->left);  // Head
-                generateExpr(node->right); // Tail (List)
+                generateExpr(node->right); // Tail
                 
-                // Вызываем HaskellRuntime.cons
-                // Индекс уже сохранен в семантике
-                emit.emitU2(INVOKESTATIC, (uint16_t)node->constPoolIndex);
+                // 2. Определяем типы для выбора метода
+                SemanticType* headType = node->left->inferredType;
+                SemanticType* tailType = node->right->inferredType;
+                
+                std::string descriptor;
+                bool needCheckCast = false;
+
+                // Проверка вложенности
+                auto isComplex = [](SemanticType* t) {
+                    return t && t->kind == TypeKind::LIST && t->subType && t->subType->kind == TypeKind::LIST;
+                };
+
+                // 3. Выбор дескриптора
+                if (isComplex(tailType)) {
+                    // Используем универсальный Object метод
+                    descriptor = "(Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;";
+                    needCheckCast = true;
+                } 
+                else if (headType && headType->kind == TypeKind::PRIMITIVE && headType->base == BaseType::STRING) {
+                    // Случай: String : [String]
+                    descriptor = "(Ljava/lang/String;[Ljava/lang/String;)[Ljava/lang/String;";
+                } 
+                else {
+                    // Случай: Int : [Int] или Float : [Float]
+                    // Генерируем стандартный дескриптор: (тип_головы, тип_хвоста)тип_хвоста
+                    descriptor = "(" + headType->getDescriptor() + tailType->getDescriptor() + ")" + tailType->getDescriptor();
+                }
+
+                // 4. Генерируем вызов
+                int methodRef = cp.addMethodRef("HaskellRuntime", "cons", descriptor);
+                emit.emitU2(INVOKESTATIC, (uint16_t)methodRef);
+
+                // 5. Если работали через Object, возвращаем тип
+                if (needCheckCast) {
+                    std::string resultDesc = node->inferredType->getDescriptor();
+                    int classIdx = cp.addClass(resultDesc);
+                    emit.emitU2(CHECKCAST, (uint16_t)classIdx);
+                }
                 return;
             }
 
