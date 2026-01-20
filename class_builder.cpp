@@ -2,20 +2,31 @@
 #include "code_generator.h"
 
 bool ClassBuilder::build() {
-    // 1. Подготавливаем индексы имен для всех методов
+    // 1. Сначала добавляем UTF-8 строки для имен и дескрипторов ВСЕХ методов
+    // Это гарантирует, что nameIdx и descIdx будут > 0
     for (auto& method : jvmClass->methods) {
         method.nameIdx = jvmClass->cp.addUtf8(method.name);
         method.descIdx = jvmClass->cp.addUtf8(method.descriptor);
     }
 
-    // 2. Генерируем байткод (наполняем пул метод рефами)
+    // 2. Генерируем байткод (наполняем пул MethodRef-ами)
     for (auto& method : jvmClass->methods) {
-        // Пропускаем конструктор и нативный main   
-        if (method.name != "<init>" && method.name != "main") {
-            std::vector<uint8_t> methodBytecode;
-            CodeGenerator methodGen(jvmClass->cp, methodBytecode);
-            methodGen.generateFullMethod(method);
-            method.bytecode = methodBytecode; 
+        if (method.name != "main" && method.name != "<init>") {
+            std::vector<uint8_t> bc;
+            CodeGenerator gen(jvmClass->cp, bc);
+            gen.generateFullMethod(method);
+            method.bytecode = bc;
+        }
+    }
+
+    // 3. Генерируем нативный main (теперь haskellMain точно есть в пуле)
+    for (auto& method : jvmClass->methods) {
+        if (method.name == "main") {
+            int targetIdx = jvmClass->cp.addMethodRef(jvmClass->className, "haskellMain", "()V");
+            method.bytecode = { 
+                0xB8, (uint8_t)(targetIdx >> 8), (uint8_t)(targetIdx & 0xFF), // invokestatic
+                0xB1                                                        // return
+            };
         }
     }
 

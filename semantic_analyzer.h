@@ -30,7 +30,7 @@ private:
 
     void analyzeDeclList(DeclListNode* list);
     void analyzeDecl(DeclNode* node);
-    void analyzeExpr(ExprNode* node);
+    void analyzeExpr(ExprNode* node, SemanticType* expectedType = nullptr);
     void analyzePattern(ExprNode* pattern, SemanticType* expectedType, int& localIdx, int argIdx = -1);
 
     void collectTypes(ASTNode* node, std::vector<SemanticType*>& types);

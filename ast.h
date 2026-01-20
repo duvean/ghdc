@@ -148,15 +148,16 @@ public:
 	std::vector<ExprNode*> arguments;     // аргументы
     std::vector<ExprNode*> flattenedArgs; // заполняется на семантике
     
-    ExprNode* left = nullptr;
-    ExprNode* right = nullptr;
-    ExprNode* cond = nullptr;
-    ExprNode* expr_true = nullptr;
-    ExprNode* expr_false = nullptr;
-    ExprNode* function = nullptr;
-    DeclListNode* decls = nullptr;
-    bool isFunctionRef = false;
-    bool isBuiltinFunciton = false;
+    ExprNode*     left        = nullptr;
+    ExprNode*     right       = nullptr;
+    ExprNode*     cond        = nullptr;
+    ExprNode*     expr_true   = nullptr;
+    ExprNode*     expr_false  = nullptr;
+    ExprNode*     function    = nullptr;
+    DeclListNode* decls       = nullptr;
+    bool isFunctionRef        = false;
+    bool isBuiltinFunciton    = false;
+    bool isPartialInChain     = false;
     
     static ExprNode* createLiteral(const std::string& val);
     static ExprNode* createVarRef(const std::string& name);

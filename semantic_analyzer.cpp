@@ -177,12 +177,15 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
 
         // 5. Анализ тела функции
         if (node->expr) {
-            analyzeExpr(node->expr);
+            // Пробрасываем ожидаемый тип возврата в выражение тела
+            analyzeExpr(node->expr, sig.returnType); 
 
-            // Для пустых списков
-            if (node->expr->type == EXPR_ARRAY && node->expr->block.empty()) {
-                node->expr->inferredType = sig.returnType;
-            }
+            // Теперь этот костыль ниже не обязателен, 
+            // так как EXPR_ARRAY уже сам всё подхватит,
+            // пока оставлю
+            // if (node->expr->type == EXPR_ARRAY && node->expr->block.empty()) {
+            //     node->expr->inferredType = sig.returnType;
+            // }
         }
 
         // 6. ФИНАЛ: Сохраняем локальные переменные в структуру метода
@@ -256,7 +259,7 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
     }
 }
 
-void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
+void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
     if (!node) return;
 
     switch (node->type) {
@@ -463,7 +466,15 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
             elemType = node->block[0]->inferredType;
 
             for (size_t i = 1; i < node->block.size(); ++i) {
-                analyzeExpr(node->block[i]);
+                analyzeExpr(node->block[i], elemType); // Передаем тип первого элемента остальным
+            }
+        } else {
+            if (expectedType && expectedType->kind == TypeKind::LIST) {
+                // Если массив пустой, берем тип элементов из ожидаемого типа [T]
+                elemType = expectedType->subType;
+            } else {
+                // Если контекста нет, по умолчанию считаем Int
+                elemType = SemanticType::Int();
             }
         }
 
@@ -499,20 +510,21 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
         std::vector<ExprNode*> allArgs;
         ExprNode* baseFuncNode = nullptr;
         flattenCall(node, allArgs, &baseFuncNode);
-
         if (!baseFuncNode) break;
 
         node->flattenedArgs = allArgs;
-        analyzeExpr(baseFuncNode);
-        for (auto* arg : allArgs) analyzeExpr(arg);
 
+        // 1. Анализируем саму базу функции (чтобы узнать её имя)
+        analyzeExpr(baseFuncNode);
         std::string name = baseFuncNode->name;
         if (name.find(' ') != std::string::npos) name = name.substr(0, name.find(' '));
 
-        // 1. Пытаемся получить сигнатуру
+        for (auto* arg : allArgs) analyzeExpr(arg); 
+
+        // 2. Ищем сигнатуру ДО анализа аргументов
         FunctionSignature sig;
         bool foundSig = false;
-        bool isBuiltin = false; // Флаг, что функция из HaskellRuntime
+        bool isBuiltin = false;
 
         // Специальная логика для head/tail (динамическая сигнатура)
         if  ((name == "head" 
@@ -535,18 +547,21 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
                     
                 foundSig = true;
                 isBuiltin = true;
+                baseFuncNode->inferredType = SemanticType::Function(sig.paramTypes, sig.returnType);
+                baseFuncNode->isBuiltinFunciton = true;
             }
         }
 
         // Сигнатура для полиморфного print
         else if (name == "print" && !allArgs.empty()) {
             SemanticType* argType = allArgs[0]->inferredType;
-            // (T) -> IO на основе типа аргумента
             sig.paramTypes = { argType };
             sig.returnType = SemanticType::IO();
             
             foundSig = true;
             isBuiltin = true;
+
+            baseFuncNode->inferredType = SemanticType::Function(sig.paramTypes, sig.returnType);
         }
 
         // Общая логика (из словарей)
@@ -562,12 +577,14 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
 
         // 2. Если сигнатура определена (динамически или статически)
         if (foundSig) {
-            // Устанавливаем идентификатору тип функции
-            baseFuncNode->inferredType = SemanticType::Function(sig.paramTypes, sig.returnType);
-            baseFuncNode->isBuiltinFunciton = isBuiltin;
-
-            std::string targetClass = isBuiltin ? "HaskellRuntime" : currentClass->className;
-            node->constPoolIndex = constPool.addMethodRef(targetClass, name, sig.getDescriptor());
+            // 3. Анализируем аргументы, зная их ожидаемые типы
+            for (size_t i = 0; i < allArgs.size(); ++i) {
+                SemanticType* expectedArgType = nullptr;
+                if (i < sig.paramTypes.size()) {
+                    expectedArgType = sig.paramTypes[i];
+                } 
+                analyzeExpr(allArgs[i], expectedArgType); // Передаем ожидаемый тип
+            }
 
             // Типизация цепочки (чтобы не было ?)
             std::vector<ExprNode*> chain;
@@ -589,7 +606,12 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node) {
                 }
                 chain[i]->inferredType = currentType;
             }
-        } 
+
+            baseFuncNode->inferredType = SemanticType::Function(sig.paramTypes, sig.returnType);
+            baseFuncNode->isBuiltinFunciton = isBuiltin; // Чтобы генератор знал, какой класс писать
+        } else {
+            for (auto* arg : allArgs) analyzeExpr(arg);
+        }
         break;
     }
 

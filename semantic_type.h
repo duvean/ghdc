@@ -78,13 +78,18 @@ public:
             }
         }
         if (kind == TypeKind::LIST) return "[" + subType->getDescriptor();
-        if (kind == TypeKind::CONSTRUCTOR && typeName == "IO") return "V";
-        if (kind == TypeKind::CONSTRUCTOR) return "L" + typeName + ";";
-        
-        // Если функция передается как аргумент (лямбда), в JVM это обычно Object или спец интерфейс
-        if (kind == TypeKind::FUNCTION) return "Ljava/lang/Object;"; 
-        
-        return "V";
+        if (kind == TypeKind::FUNCTION) {
+            std::string res = "(";
+            for (auto* p : paramTypes) res += p->getDescriptor();
+            res += ")";
+            res += returnType->getDescriptor();
+            return res;
+        }
+        if (kind == TypeKind::CONSTRUCTOR) {
+            if (typeName == "IO") return "V";
+            return "L" + typeName + ";";
+        }
+        return "Ljava/lang/Object;";
     }
 
     std::string toString() {

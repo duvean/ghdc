@@ -47,7 +47,7 @@ void CodeGenerator::generateExpr(ExprNode *node) {
             if (node->isBuiltinFunciton) {
                 // Это вызов статического метода без аргументов
                 // constPoolIndex уже заполнен на семантике
-                emit.emitU2(Opcode::INVOKESTATIC, (uint16_t)node->constPoolIndex);
+                emit.emitU2(INVOKESTATIC, (uint16_t)node->constPoolIndex);
             }
             else if (node->localVarIndex != -1) {
                 uint8_t op = getLoadOpcode(node->inferredType);
@@ -56,8 +56,47 @@ void CodeGenerator::generateExpr(ExprNode *node) {
             break;
 
         case NodeType::EXPR_FUNC_CALL: {
-            for (auto *arg : node->flattenedArgs) generateExpr(arg);
-            emit.emitU2(INVOKESTATIC, (uint16_t)node->constPoolIndex);
+            // ПРОВЕРКА: Если этот узел - часть цепочки, и выше него есть другой CALL,
+            // то мы ничего не делаем в этом узле. Мы ждем, пока рекурсия дойдет до
+            // самого верхнего узла, где лежит полный список аргументов.
+            
+            // Если список сплющенных аргументов пуст, значит это "промежуточный" узел
+            if (node->flattenedArgs.empty()) return; 
+
+            // Мы в корневом узле вызова (у которого заполнено flattenedArgs)
+            
+            // 1. Генерируем код для всех аргументов из списка
+            // Это положит их на стек в правильном порядке
+            for (auto* arg : node->flattenedArgs) generateExpr(arg);
+
+            // 2. Находим базу функции (самый левый узел)
+            ExprNode* baseFunc = node;
+            while (baseFunc->function) baseFunc = baseFunc->function;
+
+            // 3. Формируем вызов
+            std::string name = baseFunc->name;
+            // Убираем возможные пробелы из имени (как в семантике)
+            if (name.find(' ') != std::string::npos) name = name.substr(0, name.find(' '));
+
+            // 4. Формируем дескриптор динамически
+            std::string descriptor;
+
+            if (name == "print" && !node->flattenedArgs.empty()) {
+                // Берем тип ПЕРВОГО аргумента (который реально лежит на стеке)
+                SemanticType* actualArgType = node->flattenedArgs[0]->inferredType;
+                descriptor = "(" + actualArgType->getDescriptor() + ")V";
+            } 
+            else {
+                // Для всех остальных функций (head, tail, reverse) используем то, 
+                // что сохранено в базовом узле функции
+                descriptor = baseFunc->inferredType->getDescriptor();
+            }
+
+            std::string targetClass = baseFunc->isBuiltinFunciton ? "HaskellRuntime" : "HaskellProgram";
+            int methodRef = cp.addMethodRef(targetClass, name, descriptor);
+
+            // 5. Генерируем инструкцию вызова
+            emit.emitU2(INVOKESTATIC, (uint16_t)methodRef);
             break;
         }
 
@@ -211,35 +250,40 @@ void CodeGenerator::generateExpr(ExprNode *node) {
         }
 
         case NodeType::EXPR_ARRAY: {
-            // 1. Кладем размер массива на стек
             int size = node->block.size();
             emit.iconst(size);
 
-            // 2. Создаем массив
             SemanticType* elemType = node->inferredType->subType;
-                
-            if (elemType->base == BaseType::INT) {
-                emit.emitU1(NEWARRAY, 10); // 10 = T_INT
-            } else if (elemType->base == BaseType::FLOAT) {
-                emit.emitU1(NEWARRAY, 6);  // 6 = T_FLOAT
-            } else if (elemType->base == BaseType::STRING) {
-                emit.emitU2(ANEWARRAY, (uint16_t)node->constPoolIndex);
+            std::string desc = elemType->getDescriptor();
+
+            if (desc == "I") {
+                emit.emitU1(NEWARRAY, 10); // T_INT
+            } else if (desc == "F") {
+                emit.emitU1(NEWARRAY, 6);  // T_FLOAT
+            } else if (desc == "Z") {
+                emit.emitU1(NEWARRAY, 4);  // T_BOOLEAN
+            } else {
+                // Обрезание (L и последней ;)
+                if (desc[0] == 'L') {    
+                    desc = desc.substr(1, desc.size() - 2);
+                }
+                // Если это массив массивов [[I] или массив объектов
+                int classIdx = cp.addClass(desc); 
+                //emit.emitU1(NEWARRAY, 10);
+                emit.emitU2(ANEWARRAY, (uint16_t)classIdx);
             }
 
-            // Сейчас пустой массив (ссылка) лежит на стеке.
-                
-            // 3. Заполняем элементами
+            // Если массив пустой, цикл просто не выполнится, 
+            // и на стеке останется ссылка на пустой массив.
             for (int i = 0; i < size; ++i) {
-                emit.emit(DUP); // Дублируем ссылку на массив
-                emit.iconst(i); // Индекс
-                generateExpr(node->block[i]); // Значение элемента
+                emit.emit(DUP); 
+                emit.iconst(i); 
+                generateExpr(node->block[i]); 
                     
-                // Сохраняем (Array Store)
                 if (elemType->base == BaseType::INT) emit.emit(IASTORE);
                 else if (elemType->base == BaseType::FLOAT) emit.emit(FASTORE);
-                else emit.emit(AASTORE); // Для String
+                else emit.emit(AASTORE);
             }
-            // На стеке осталась ссылка на заполненный массив
             break;
         }
 
@@ -366,34 +410,34 @@ size_t CodeGenerator::matchPattern(ExprNode* pattern, int argLocIdx) {
 
     if (pattern->type == NodeType::EXPR_PATTERN_LIST) {
         // [] - проверяем, что аргумент под индексом argLocIdx имеет длину 0
-        emit.emitU1(0x19, (uint8_t)argLocIdx); // ALOAD
+        emit.emitU1(ALOAD, (uint8_t)argLocIdx);
         emit.emit(0xBE); // ARRAYLENGTH
         size_t offset = emit.getCurrentOffset();
-        emit.emitU2(0x9A, 0); // IFNE -> прыжок к следующему телу, если длина != 0
+        emit.emitU2(IFNE, 0); // прыжок к следующему телу, если длина != 0
         return offset;
     }
 
     if (pattern->type == NodeType::EXPR_PATTERN_CONS) {
         // (x:xs) - проверяем длину > 0
-        emit.emitU1(0x19, (uint8_t)argLocIdx); // ALOAD
+        emit.emitU1(ALOAD, (uint8_t)argLocIdx);
         emit.emit(0xBE); 
         size_t offset = emit.getCurrentOffset();
-        emit.emitU2(0x99, 0); // IFEQ -> прыжок к следующему телу, если длина == 0
+        emit.emitU2(IFEQ, 0); // прыжок к следующему телу, если длина == 0
 
         // Извлекаем x (Head)
         emit.emitU1(0x19, (uint8_t)argLocIdx); 
-        emit.emit(0x03); // ICONST_0
+        emit.emit(ICONST_0);
         
         // Выбираем тип загрузки в зависимости от типа элемента
         if (pattern->left->inferredType->base == BaseType::FLOAT) {
-            emit.emit(0x30); // FALOAD
-            emit.emitU1(0x38, (uint8_t)pattern->left->localVarIndex); // FSTORE
+            emit.emit(FALOAD);
+            emit.emitU1(FSTORE, (uint8_t)pattern->left->localVarIndex);
         } else if (pattern->left->inferredType->base == BaseType::INT || pattern->left->inferredType->base == BaseType::BOOL) {
-            emit.emit(0x2E); // IALOAD
-            emit.emitU1(0x36, (uint8_t)pattern->left->localVarIndex); // ISTORE
+            emit.emit(IALOAD);
+            emit.emitU1(ISTORE, (uint8_t)pattern->left->localVarIndex);
         } else {
-            emit.emit(0x32); // AALOAD
-            emit.emitU1(0x3A, (uint8_t)pattern->left->localVarIndex); // ASTORE
+            emit.emit(AALOAD);
+            emit.emitU1(ASTORE, (uint8_t)pattern->left->localVarIndex);
         }
 
         // Извлекаем xs (Tail)
@@ -402,8 +446,8 @@ size_t CodeGenerator::matchPattern(ExprNode* pattern, int argLocIdx) {
         int tailRef = cp.addMethodRef("HaskellRuntime", "tail", tailDesc);
         
         emit.emitU1(0x19, (uint8_t)argLocIdx);
-        emit.emitU2(0xB8, (uint16_t)tailRef); // INVOKESTATIC
-        emit.emitU1(0x3A, (uint8_t)pattern->right->localVarIndex); // ASTORE
+        emit.emitU2(INVOKESTATIC, (uint16_t)tailRef);
+        emit.emitU1(ASTORE, (uint8_t)pattern->right->localVarIndex);
 
         return offset;
     }
@@ -469,37 +513,35 @@ uint8_t CodeGenerator::getReturnOpcode(const std::string &descriptor)
 {
     size_t parenIndex = descriptor.find(')');
     if (parenIndex == std::string::npos || parenIndex + 1 >= descriptor.size())
-        return 0xB1; // На всякий случай
+        return RETURN; // На всякий случай
 
     char returnStart = descriptor[parenIndex + 1];
 
     switch (returnStart) {
-        case 'V': return 0xB1; // RETURN (void)
-        case '[': return 0xB0; // ARETURN (любой массив: [I, [F, [L...;)
-        case 'L': return 0xB0; // ARETURN (объект)
+        case 'V': return RETURN;  // (void)
+        case '[': return ARETURN; // (любой массив: [I, [F, [L...;)
+        case 'L': return ARETURN; // (объект)
         case 'I':
         case 'Z':
         case 'B':
         case 'C':
-        case 'S': return 0xAC; // IRETURN (целые и bool)
-        case 'F': return 0xAE; // FRETURN (float)
-        case 'D': return 0xAF; // DRETURN (double)
-        case 'J': return 0xAD; // LRETURN (long)
-        default: return 0xB1;
+        case 'S': return IRETURN; // (целые и bool)
+        case 'F': return FRETURN; // (float)
+        default:  return RETURN;
     }
 }
 
 void CodeGenerator::emitDefaultReturn(const std::string& descriptor) {
     uint8_t op = getReturnOpcode(descriptor);
     
-    if (op == 0xAC) { // IRETURN (Int, Bool)
-        emit.emit(0x03); // ICONST_0
+    if (op == IRETURN) { // Int, Bool
+        emit.emit(ICONST_0);
     } 
-    else if (op == 0xAE) { // FRETURN (Float)
-        emit.emit(0x0B); // FCONST_0
+    else if (op == FRETURN) { // Float
+        emit.emit(FCONST_0);
     }
-    else if (op == 0xB0) { // ARETURN (Массивы/Объекты)
-        emit.emit(0x01); // ACONST_NULL
+    else if (op == ARETURN) { // Массивы/Объекты
+        emit.emit(ACONST_NULL);
     }
     // Если void (0xB1), ничего класть не нужно
 
