@@ -77,14 +77,16 @@ public class HaskellRuntime {
 
     /* ========== ВЫВОД ========== */ 
 
-    public static void print(int i)        { System.out.println(i); }
-    public static void print(float f)      { System.out.println(f); }
-    public static void print(String s)     { System.out.println(s); }
-    public static void print(Object o)     { System.out.println(o); }
-    public static void print(int[] arr)    { System.out.println(Arrays.toString(arr)); }
-    public static void print(float[] arr)  { System.out.println(Arrays.toString(arr)); }
-    public static void print(String[] arr) { System.out.println(Arrays.toString(arr)); }
-    public static void print(Object[] arr) { System.out.println(Arrays.deepToString(arr)); }
+    public static void print(int i)         { System.out.println(i); }
+    public static void print(float f)       { System.out.println(f); }
+    public static void print(String s)      { System.out.println(s); }
+    public static void print(Object o)      { System.out.println(o); }
+    public static void print(boolean b)     { System.out.println(b); }
+    public static void print(int[] arr)     { System.out.println(Arrays.toString(arr)); }
+    public static void print(float[] arr)   { System.out.println(Arrays.toString(arr)); }
+    public static void print(String[] arr)  { System.out.println(Arrays.toString(arr)); }
+    public static void print(Object[] arr)  { System.out.println(Arrays.deepToString(arr)); }
+    public static void print(boolean[] arr) { System.out.println(Arrays.toString(arr)); }
     
 
 
