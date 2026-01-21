@@ -140,6 +140,7 @@ public class HaskellRuntime {
 
     // Проверка на пустой список
     public static boolean isNull(int[] arr) { return arr == null || arr.length == 0; }
+    public static boolean isNull(int[][] arr) { return arr == null || arr.length == 0; }
     public static boolean isNull(float[] arr) { return arr == null || arr.length == 0; }
     public static boolean isNull(String[] arr) { return arr == null || arr.length == 0; }
     public static boolean isNull(Object[] arr) { return arr == null || arr.length == 0; }
