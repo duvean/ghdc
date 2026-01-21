@@ -119,7 +119,9 @@ public:
     static DeclListNode* createParamList(ExprNode* patternNode);
     static DeclListNode* addParamToList(DeclListNode* list, ExprNode* patternNode);
     static DeclListNode* createConstructorList(char* name);
+    static DeclListNode* createConstructorList(char* name, ExprNode* val = nullptr);
     static DeclListNode* addConstructorToList(DeclListNode* list, char* name);
+    static DeclListNode* addConstructorToList(DeclListNode* list, char* name, ExprNode* val = nullptr);
 };
 
 
@@ -158,6 +160,7 @@ public:
     bool isFunctionRef        = false;
     bool isBuiltinFunciton    = false;
     bool isPartialInChain     = false;
+    bool isEnumConstant       = false;
     
     static ExprNode* createLiteral(const std::string& val);
     static ExprNode* createVarRef(const std::string& name);

@@ -27,4 +27,5 @@ private:
     uint8_t getLoadOpcode(SemanticType* type);
     uint8_t getReturnOpcode(const std::string& desc);
     void emitDefaultReturn(const std::string& desc);
+    void emitIConst(int val);
 };

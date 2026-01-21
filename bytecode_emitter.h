@@ -4,6 +4,7 @@
 
 enum Opcode : uint8_t {
     ICONST_0  = 0x03,  ICONST_1    = 0x04,
+    ICONST_M1 = 0x02,
     FCONST_0  = 0x0B,  ACONST_NULL = 0x01,
     BIPUSH    = 0x10,  LDC         = 0x12,
     ILOAD     = 0x15,  ISTORE      = 0x36,
@@ -23,11 +24,13 @@ enum Opcode : uint8_t {
     IF_ICMPEQ = 0x9F,  IF_ICMPLT   = 0xA1,    
     IF_ICMPGE = 0xA2,  IF_ICMPGT   = 0xA3,
     IF_ICMPLE = 0xA4,  IF_ICMPNE   = 0xA0,
-    CHECKCAST = 0xC0,  I2F         = 0x86,
+    CHECKCAST = 0xC0,  LDC_W       = 0x13,
+    
     IFEQ = 0x99, IFLT = 0x9B, IFGT = 0x9D, 
     IFLE = 0x9E, GOTO = 0xA7, IAND = 0x7E,
     IOR  = 0x80, IFNE = 0x9A, IFGE = 0x9C, 
-    INVOKESTATIC = 0xB8
+    INVOKESTATIC = 0xB8,      I2F  = 0x86,
+    ARRAYLENGTH  = 0xBE
 };
 
 class BytecodeEmitter {
@@ -54,7 +57,13 @@ public:
         code.push_back((arg >> 8) & 0xFF);
         code.push_back(arg & 0xFF);
     }
-    
+
+    // То же самое только без опкода
+    void emitRawU2(uint16_t value) {
+        code.push_back((value >> 8) & 0xFF);
+        code.push_back(value & 0xFF);
+    }
+
     // Позволяет пропатчить 2 байта по конкретному адресу
     void patchU2(size_t pos, uint16_t value) {
         if (pos + 1 < code.size()) {

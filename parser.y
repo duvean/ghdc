@@ -166,8 +166,10 @@ data_decl:
     ;
 
 constr_list:
-      constr_list PIPE ID_CAP { $$ = DeclListNode::addConstructorToList($1, $3); }
-    | ID_CAP                  { $$ = DeclListNode::createConstructorList($1); }
+      constr_list PIPE ID_CAP                     { $$ = DeclListNode::addConstructorToList($1, $3, nullptr); }
+    | constr_list PIPE ID_CAP EQUALS DEC_LITERAL  { $$ = DeclListNode::addConstructorToList($1, $3, ExprNode::createLiteral($5)); }
+    | ID_CAP                                      { $$ = DeclListNode::createConstructorList($1, nullptr); }
+    | ID_CAP EQUALS DEC_LITERAL                   { $$ = DeclListNode::createConstructorList($1, ExprNode::createLiteral($3)); }
     ;
 
 

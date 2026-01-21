@@ -36,6 +36,11 @@ public:
     static SemanticType* Function(std::vector<SemanticType*> params, SemanticType* ret) {
         return new SemanticType(params, ret);
     }
+    static SemanticType* Enum(const std::string& name) {
+        SemanticType* t = new SemanticType(TypeKind::CONSTRUCTOR);
+        t->typeName = name; 
+        return t;
+    }
     static SemanticType* IO() {
         SemanticType* t = new SemanticType(TypeKind::CONSTRUCTOR);
         t->typeName = "IO"; 
@@ -87,7 +92,7 @@ public:
         }
         if (kind == TypeKind::CONSTRUCTOR) {
             if (typeName == "IO") return "V";
-            return "L" + typeName + ";";
+            return "I";
         }
         return "Ljava/lang/Object;";
     }

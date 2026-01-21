@@ -3,9 +3,21 @@
 #include "semantic_type.h"
 
 struct LocalVariable {
-    int index;
     SemanticType* type;
-    LocalVariable(SemanticType* t = nullptr, int i = -1) : type(t), index(i) {}
+    int index;
+    bool isEnum = false;
+    int enumValue = 0;
+
+    LocalVariable() : type(nullptr), index(-1) {}
+    LocalVariable(SemanticType* t, int i) : type(t), index(i), isEnum(false) {}
+    
+    static LocalVariable EnumConst(SemanticType* t, int val) {
+        LocalVariable lv;
+        lv.type = t;
+        lv.isEnum = true;
+        lv.enumValue = val;
+        return lv;
+    }
 };
 
 struct FunctionSignature {

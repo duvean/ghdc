@@ -378,9 +378,25 @@ DeclListNode* DeclListNode::createConstructorList(char* name) {
     return DeclListNode::create(constructor_decl);
 }
 
+DeclListNode* DeclListNode::createConstructorList(char* name, ExprNode* val) {
+    DeclNode* constructor_decl = new DeclNode(NodeType::DECL_CONSTRUCTOR);
+    constructor_decl->name = name;
+    constructor_decl->expr = val; 
+
+    return DeclListNode::create(constructor_decl);
+}
+
 DeclListNode* DeclListNode::addConstructorToList(DeclListNode* list, char* name) {
     DeclNode* new_constructor_decl = new DeclNode(NodeType::DECL_CONSTRUCTOR);
     new_constructor_decl->name = name;
+
+    return DeclListNode::addDecl(list, new_constructor_decl);
+}
+
+DeclListNode* DeclListNode::addConstructorToList(DeclListNode* list, char* name, ExprNode* val) {
+    DeclNode* new_constructor_decl = new DeclNode(NodeType::DECL_CONSTRUCTOR);
+    new_constructor_decl->name = name;
+    new_constructor_decl->expr = val;
 
     return DeclListNode::addDecl(list, new_constructor_decl);
 }

@@ -44,12 +44,24 @@ void CodeGenerator::generateExpr(ExprNode *node) {
             break;
 
         case NodeType::EXPR_VAR:
-            if (node->isBuiltinFunciton) {
-                // Это вызов статического метода без аргументов
-                // constPoolIndex уже заполнен на семантике
+            if (node->isEnumConstant) {
+                // 1. Сначала проверяем, есть ли уже индекс в узле
+                int cpIdx = node->constPoolIndex;
+                
+                // 2. Если индекс 0 или не задан, создаем его заново в пуле
+                if (cpIdx <= 0) {
+                    int val = std::stoi(node->value);
+                    cpIdx = cp.addInteger(val);
+                }
+                
+                std::cout << "[DEBUG-GEN] LDC for " << node->name << " uses CP index: " << cpIdx << std::endl;
+                // 3. Генерируем ldc
+                emit.emitU1(LDC, (uint8_t)cpIdx);
+            }
+            else if (node->isBuiltinFunciton) { // Вызов метода без аргументов 
                 emit.emitU2(INVOKESTATIC, (uint16_t)node->constPoolIndex);
             }
-            else if (node->localVarIndex != -1) {
+            else if (node->localVarIndex != -1) { // Обычная переменная, определяем opcode
                 uint8_t op = getLoadOpcode(node->inferredType);
                 emit.emitU1(op, (uint8_t)node->localVarIndex);
             }
@@ -404,19 +416,71 @@ void CodeGenerator::generateDecl(DeclNode *node) {
             break;
 
         case NodeType::DECL_FUNC: {
+            size_t patchPos = 0;
+            size_t opcodePos = 0;
+
+            if (node->paramsList) {
+                auto* params = static_cast<DeclListNode*>(node->paramsList);
+                for (size_t i = 0; i < params->decls.size(); ++i) {
+                    auto* varDecl = params->decls[i];
+                    auto* pattern = static_cast<ExprNode*>(varDecl->expr);
+
+                    if (pattern && pattern->type == NodeType::EXPR_PATTERN_CONSTRUCTOR) {
+                        std::cout << "[DEBUG] Pattern Name: " << pattern->name << std::endl;
+                        std::cout << "[DEBUG] Pattern Value String: '" << pattern->value << "'" << std::endl;
+                        // 1. Загружаем аргумент
+                        emit.emitU1(ILOAD, (uint8_t)i);
+
+                        // 2. Загружаем значение константы
+                        // Используем stoi, тк в ExprNode.value лежит строка
+                        int val = 0;
+                        try {
+                            if (pattern->value.empty()) {
+                                // Если в value пусто, возможно мы забыли прокинуть enumValue из SymbolInfo
+                                std::cout << "[WARN] Pattern value is empty, check semantic analysis!" << std::endl;
+                            } else {
+                                val = std::stoi(pattern->value);
+                            }
+                        } catch (const std::exception& e) {
+                            std::cout << "[ERROR] stoi failed for value: " << pattern->value << std::endl;
+                            // В качестве фоллбека, если мы не прокинули число, 
+                            // но у нас есть enumValue в узле (если ты его добавлял):
+                            // val = pattern->enumValue; 
+                        }
+                        emitIConst(val);
+
+                        // 3. Заглушка для последующего патча
+                        opcodePos = emit.getCurrentOffset(); // Запоминаем где стоит 0xA0
+                        emit.emit(IF_ICMPNE);                // Пишем опкод
+                        patchPos = emit.getCurrentOffset();  // Запоминаем где начнутся 00 00
+                        emit.emitRawU2(0);                   // Пишем заглушку
+                    }
+                }
+            }
+
+            // 4. Тело функции
             if (node->expr) {
-                generateExpr(node->expr); // Результат тела функции на стеке
-                    
+                generateExpr(node->expr);
+
                 SemanticType* retType = node->expr->inferredType;
                 if (retType->base == BaseType::IO || retType->base == BaseType::VOID) {
-                    emit.emit(RETURN); // RETURN (void)
-                } else if (retType->base == BaseType::INT || retType->base == BaseType::BOOL) {
-                    emit.emit(IRETURN); // IRETURN
+                    emit.emit(RETURN);
+                } else if (retType->base == BaseType::INT || retType->base == BaseType::BOOL || 
+                        (retType->kind == TypeKind::CONSTRUCTOR && retType->typeName != "IO")) {
+                    emit.emit(IRETURN);
                 } else if (retType->base == BaseType::FLOAT) {
-                    emit.emit(FRETURN); // FRETURN
+                    emit.emit(FRETURN);
                 } else {
-                    emit.emit(ARETURN); // ARETURN (для объектов и массивов)
+                    emit.emit(ARETURN);
                 }
+            }
+
+            // 5. Пришиваем патч
+            if (patchPos != 0) {
+                size_t currentPos = emit.getCurrentOffset();
+                // Смещение = Текущая позиция (конец тела) - Позиция начала инструкции IF_ICMPNE
+                int16_t offset = static_cast<int16_t>(currentPos - opcodePos);
+                emit.patchU2(patchPos, static_cast<uint16_t>(offset));
             }
             break;
         }
@@ -480,23 +544,50 @@ size_t CodeGenerator::matchPattern(ExprNode* pattern, int argLocIdx) {
     }
 
     if (pattern->type == NodeType::EXPR_PATTERN_LIST) {
-        // [] - проверяем, что аргумент под индексом argLocIdx имеет длину 0
         emit.emitU1(ALOAD, (uint8_t)argLocIdx);
-        emit.emit(0xBE); // ARRAYLENGTH
-        size_t offset = emit.getCurrentOffset();
-        emit.emitU2(IFNE, 0); // прыжок к следующему телу, если длина != 0
-        return offset;
+        emit.emit(ARRAYLENGTH);
+        
+        emit.emit(IFNE);
+        size_t offsetAddr = emit.getCurrentOffset();
+        emit.emitRawU2(0); // Резервируем 2 байта
+        return offsetAddr;
+    }
+
+    if (pattern->type == NodeType::EXPR_PATTERN_CONSTRUCTOR) {
+        // Загружаем аргумент
+        emit.emitU1(ILOAD, (uint8_t)argLocIdx);
+
+        // Загружаем ожидаемое значение
+        int expectedVal = 0;
+        try {
+            expectedVal = std::stoi(pattern->value);
+        } catch (...) {
+            std::cerr << "[Gen Error] Bad enum value in pattern: " << pattern->name << "\n";
+        }
+        emitIConst(expectedVal);
+
+        // Если не равны, прыгаем к следующему телу
+        emit.emit(IF_ICMPNE);
+        
+        // Запоминаем позицию для патчинга
+        size_t opcodeOffset = emit.getCurrentOffset(); 
+        emit.emitRawU2(0); 
+
+        // Возвращаем адрес инструкции (чтобы потом посчитать смещение от него)
+        return opcodeOffset;
     }
 
     if (pattern->type == NodeType::EXPR_PATTERN_CONS) {
         // (x:xs) - проверяем длину > 0
         emit.emitU1(ALOAD, (uint8_t)argLocIdx);
-        emit.emit(0xBE); 
-        size_t offset = emit.getCurrentOffset();
-        emit.emitU2(IFEQ, 0); // прыжок к следующему телу, если длина == 0
+        emit.emit(ARRAYLENGTH); 
+        
+        emit.emit(IFEQ);
+        size_t offsetAddr = emit.getCurrentOffset();
+        emit.emitRawU2(0);
 
         // Извлекаем x (Head)
-        emit.emitU1(0x19, (uint8_t)argLocIdx); 
+        emit.emitU1(ALOAD, (uint8_t)argLocIdx); 
         emit.emit(ICONST_0);
         
         // Выбираем тип загрузки в зависимости от типа элемента
@@ -520,39 +611,30 @@ size_t CodeGenerator::matchPattern(ExprNode* pattern, int argLocIdx) {
         emit.emitU2(INVOKESTATIC, (uint16_t)tailRef);
         emit.emitU1(ASTORE, (uint8_t)pattern->right->localVarIndex);
 
-        return offset;
+        return offsetAddr;
     }
     
     return 0;
 }
 
 void CodeGenerator::generateFullMethod(JvmMethod& method) {
-    std::vector<size_t> lastBodyNextJumps;
-
     for (size_t i = 0; i < method.bodies.size(); ++i) {
         DeclNode* bodyDecl = method.bodies[i];
-        
-        // 1. Генерируем проверки для этого тела
         std::vector<size_t> currentMatchFails = generatePatternChecks(bodyDecl->paramsList);
         
-        // 2. Генерируем само выражение (тело)
         generateExpr(bodyDecl->expr);
-        
-        // 3. Генерируем возврат
         emit.emit(getReturnOpcode(method.descriptor));
 
-        // 4. Патчим все переходы "не совпало" на текущую позицию
         size_t nextBodyStart = emit.getCurrentOffset();
         for (size_t patchAddr : currentMatchFails) {
             if (patchAddr > 0) {
-                // Прыжок на начало проверки следующего тела
-                emit.patchU2(patchAddr + 1, (uint16_t)(nextBodyStart - patchAddr));
+                // patchAddr указывает на начало U2 смещения
+                size_t opcodeAddr = patchAddr - 1; 
+                int16_t relativeOffset = static_cast<int16_t>(nextBodyStart - opcodeAddr);
+                emit.patchU2(patchAddr, static_cast<uint16_t>(relativeOffset));
             }
         }
     }
-
-    // 5. Если дошли сюда — ни один паттерн не подошел. 
-    // Кидаем ошибку рантайма или просто возвращаем дефолт (для безопасности)
     emitDefaultReturn(method.descriptor);
 }
 
@@ -566,13 +648,15 @@ uint8_t CodeGenerator::getStoreOpcode(SemanticType* type) {
     if (type->base == BaseType::FLOAT) {
         return FSTORE;
     }
-    // По умолчанию для Int, Bool и прочих 32-битных типов
     return ISTORE;
 }
 
 uint8_t CodeGenerator::getLoadOpcode(SemanticType* type) {
     if (type->kind == TypeKind::LIST || type->base == BaseType::STRING) {
         return ALOAD;
+    }
+    if (type->kind == TypeKind::CONSTRUCTOR && type->typeName != "IO") {
+        return ILOAD; 
     }
     if (type->base == BaseType::FLOAT) {
         return FLOAD;
@@ -617,4 +701,22 @@ void CodeGenerator::emitDefaultReturn(const std::string& descriptor) {
     // Если void (0xB1), ничего класть не нужно
 
     emit.emit(op);
+}
+
+void CodeGenerator::emitIConst(int val) {
+    if (val >= 0 && val <= 5) {
+        emit.emit(0x03 + val); // iconst_0 ... iconst_5
+    } else if (val == -1) {
+        emit.emit(ICONST_M1);
+    } else if (val >= -128 && val <= 127) {
+        emit.emitU1(BIPUSH, (uint8_t)val);
+    } else {
+        // Если значение большое, добавляем в Constant Pool
+        int cpIdx = cp.addInteger(val);
+        if (cpIdx <= 255) {
+            emit.emitU1(LDC, (uint8_t)cpIdx);
+        } else {
+            emit.emitU2(LDC_W, (uint16_t)cpIdx);
+        }
+    }
 }

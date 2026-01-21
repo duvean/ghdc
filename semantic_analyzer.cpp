@@ -30,10 +30,10 @@ void SemanticAnalyzer::analyzeProgram(ProgramNode* root) {
         currentClass->methods.push_back(initMethod);
     }
 
-    // 2. Сначала собираем ВСЕ сигнатуры (первый проход)
+    // 2. Сначала собираем ВСЕ сигнатуры и перечисления
     // Это важно, чтобы функции видели друг друга
     for (auto* decl : root->decls) {
-        if (decl && decl->type == DECL_FUNC_SIGN) {
+        if (decl && (decl->type == DECL_FUNC_SIGN || decl->type == DECL_DATA)) {
             analyzeDecl(decl);
         }
     }
@@ -157,7 +157,14 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
         method.descIdx = constPool.addUtf8(descriptor);
 
         // 3. Подготовка к анализу тела
-        symbolTable.clear();
+        // Очищаем всё что не является глобальными константами
+        for (auto it = symbolTable.begin(); it != symbolTable.end(); ) {
+            if (!it->second.isEnum) { // Если это обычная переменная из прошлой функции
+                it = symbolTable.erase(it);
+            } else {
+                ++it;
+            }
+        }
 
         // Сначала регистрируем сами аргументы в таблице символов
         // Чтобы к ним можно было обращаться по именам, если это просто переменные
@@ -257,6 +264,34 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
             if (dynamic_cast<ASTNode*>(node)) node->inferredType = node->expr->inferredType;
         }
     }
+
+    else if (node->type == DECL_DATA) {
+        std::cout << "[DEBUG] Inside DATA_DECL for: " << node->name << std::endl;
+        // Создаем тип на основе имени узла
+        SemanticType* enumType = SemanticType::Enum(node->name);
+        
+        // enumData - это дочерний список конструкторов
+        if (node->enumData) {
+            auto* constrList = static_cast<DeclListNode*>(node->enumData);
+            int currentVal = 0;
+
+            for (auto* constr : constrList->decls) {
+                // Если у конструктора есть явное значение
+                if (constr->expr) {
+                    currentVal = std::stoi(static_cast<ExprNode*>(constr->expr)->value);
+                }
+
+                // Добавляем в таблицу
+                symbolTable[constr->name] = LocalVariable::EnumConst(enumType, currentVal);
+                
+                // Сохраняем индекс в CP для генератора
+                constr->constPoolIndex = constPool.addInteger(currentVal);
+                std::cout << "[Semantic] Registered Enum: " << constr->name << " = " << currentVal << std::endl;
+                currentVal++;
+            }
+        }
+        return;
+    }
 }
 
 void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
@@ -325,35 +360,36 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
 
     case EXPR_PATTERN_VAR:
     case EXPR_VAR: {
-        // 1. Проверка локальных переменных
+        // 1. Проверка локальных переменных и констант Enum
         if (symbolTable.count(node->name)) {
             auto& info = symbolTable[node->name];
             node->inferredType = info.type;
-            node->localVarIndex = info.index;
+
+            if (info.isEnum) {
+                node->inferredType = info.type;
+                node->value = std::to_string(info.enumValue);
+                node->isEnumConstant = true;
+                std::cout << "[Semantic] Resolved enum constant '" << node->name 
+                        << "' with value " << info.enumValue << "\n";
+                return;
+            } else { // Обычная локальная переменная (аргумент функции или let binding)
+                node->localVarIndex = info.index;
+            }
         } 
         // 2. Проверка глобальных функций
         else if (functionSignatures.count(node->name)) {
             FunctionSignature& sig = functionSignatures[node->name];
-            
-            // Создаем SemanticType::Function на основе сохраненной сигнатуры
-            // Это позволит fold увидеть, что это функция (a -> b -> c)
             node->inferredType = SemanticType::Function(sig.paramTypes, sig.returnType);
             node->isFunctionRef = true;
         }
         // 3. Встроенные функции
         else if (builtinSignatures.count(node->name)) {
             FunctionSignature& sig = builtinSignatures[node->name];
-            
-            // Если это функция без аргументов (как readInt), она сразу возвращает значение
             node->inferredType = sig.returnType;
             node->isBuiltinFunciton = true;
 
-            // Добавляем MethodRef в ConstantPool сразу
             std::string descriptor = "()" + sig.returnType->getDescriptor();
             node->constPoolIndex = constPool.addMethodRef("HaskellRuntime", node->name, descriptor);
-            
-            std::cout << "[Semantic] Resolved builtin '" << node->name 
-                    << "' as CALL with type " << sig.returnType->getDescriptor() << "\n";
         }
         break;
     }
@@ -625,6 +661,28 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
         break;
     }
 
+    case EXPR_PATTERN_CONSTRUCTOR: {
+        std::cout << "[DEBUG] Inside analyzeExpr::CONSTRUCTOR for: " << node->name << std::endl;
+        // 1. Ищем конструктор в таблице
+        if (symbolTable.count(node->name)) {
+            auto& info = symbolTable[node->name];
+            
+            if (info.isEnum) {
+                // 2. Устанавливаем тип
+                node->inferredType = info.type;
+                
+                // 3. Перезаписываем value реальным типом
+                node->value = std::to_string(info.enumValue); 
+                
+                std::cout << "[DEBUG-SEM] Patched " << node->name 
+                        << " with int value: " << node->value << std::endl;
+            }
+        } else {
+            std::cerr << "[Error] Unknown constructor: " << node->name << std::endl;
+        }
+        break;
+    }
+
     case EXPR_CASTING:
         // Cast node уже имеет явно заданный тип при создании
         // (см. createCastNode)
@@ -639,20 +697,49 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
 
 void SemanticAnalyzer::analyzePattern(ExprNode* pattern, SemanticType* expectedType, int& nextSlot, int argIdx) {
     if (!pattern) return;
-    pattern->inferredType = expectedType;
+    
+    // Устанавливаем ожидаемый тип (Color)
+    pattern->inferredType = expectedType; 
 
+    // 1. Обычные переменные (x, y, a)
     if (pattern->type == EXPR_PATTERN_VAR) {
-        // Если это верхний уровень (argIdx != -1), привязываем к аргументу
-        // Иначе (это x или xs) - выделяем новый слот
         int finalIdx = (argIdx != -1) ? argIdx : nextSlot++;
-        
         pattern->localVarIndex = finalIdx;
         symbolTable[pattern->name] = LocalVariable(expectedType, finalIdx);
     }
+    // 2. Списки (x:xs)
     else if (pattern->type == EXPR_PATTERN_CONS) {
-        // x : xs всегда выгружаются в НОВЫЕ слоты, чтобы не портить аргумент-массив
         analyzePattern(pattern->left, expectedType->subType, nextSlot, -1);
         analyzePattern(pattern->right, expectedType, nextSlot, -1);
+    }
+    // 3. Конструкторы (перечисления)
+    else if (pattern->type == EXPR_PATTERN_CONSTRUCTOR) {
+        // --- ОТЛАДКА ---
+        std::cout << "[DEBUG-SEM] Looking for: '" << pattern->name << "'" << std::endl;
+        std::cout << "[DEBUG-SEM] Current table keys: ";
+        for(auto const& [key, val] : symbolTable) std::cout << "'" << key << "' ";
+        std::cout << std::endl;
+        // ---------------
+
+        if (symbolTable.count(pattern->name)) {
+            auto& info = symbolTable[pattern->name];
+            if (info.isEnum) {
+                // Уточняем тип (на случай если expectedType был общим)
+                pattern->inferredType = info.type;
+                
+                // Записываем строковое представление числа для генератора
+                pattern->value = std::to_string(info.enumValue);
+
+                std::cout << "[Semantic-Pattern] Patched enum pattern '" << pattern->name 
+                          << "' -> value " << pattern->value << std::endl;
+            }
+        } else {
+            std::cerr << "[Semantic Error] Unknown pattern constructor: " << pattern->name << std::endl;
+        }
+    }
+    // 4. (На будущее) Tuple
+    else if (pattern->type == EXPR_PATTERN_TUPLE) {
+        // Логика для ()
     }
 }
 
