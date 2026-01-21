@@ -1,5 +1,6 @@
 %code requires { #include "ast.h" }
 %debug
+%expect 8
 %{
 
 #include "ast.h"

@@ -717,7 +717,9 @@ void SemanticAnalyzer::analyzePattern(ExprNode* pattern, SemanticType* expectedT
         // --- ОТЛАДКА ---
         std::cout << "[DEBUG-SEM] Looking for: '" << pattern->name << "'" << std::endl;
         std::cout << "[DEBUG-SEM] Current table keys: ";
-        for(auto const& [key, val] : symbolTable) std::cout << "'" << key << "' ";
+        for(auto const& pair : symbolTable) {
+            std::cout << "'" << pair.first << "' "; // pair.first это key
+        }
         std::cout << std::endl;
         // ---------------
 

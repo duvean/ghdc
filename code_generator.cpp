@@ -212,15 +212,51 @@ void CodeGenerator::generateExpr(ExprNode *node) {
 
             // Логические
             else if (node->op == "&&") {
-                generateExpr(node->left);
+                // 1. Вычисляем левый операнд
+                generateExpr(node->left); 
+
+                // 2. Если False (0), прыгаем к метке "false_branch"
+                size_t jumpToFalseAddr = emit.getCurrentOffset();
+                emit.emitU2(IFEQ, 0); 
+
+                // 3. Вычисляем правый операнд (только если левый был True)
                 generateExpr(node->right);
-                emit.emit(IAND);
+
+                // 4. Прыгаем в самый конец (результат правого операнда остается на стеке)
+                size_t skipFalseAddr = emit.getCurrentOffset();
+                emit.emitU2(GOTO, 0);
+
+                // 5. Метка False: сюда попадаем только если левый был 0
+                size_t falseTarget = emit.getCurrentOffset();
+                emit.patchU2(jumpToFalseAddr + 1, (uint16_t)(falseTarget - jumpToFalseAddr));
+                emit.iconst(0);
+
+                size_t endTarget = emit.getCurrentOffset();
+                emit.patchU2(skipFalseAddr + 1, (uint16_t)(endTarget - skipFalseAddr));
                 return;
             }
             else if (node->op == "||") {
+                // 1. Вычисляем левый операнд
                 generateExpr(node->left);
+
+                // 2. Если True (не 0), прыгаем к метке "true_branch"
+                size_t jumpToTrueAddr = emit.getCurrentOffset();
+                emit.emitU2(IFNE, 0);
+
+                // 3. Вычисляем правый операнд (только если левый был False)
                 generateExpr(node->right);
-                emit.emit(IOR);
+
+                // 4. Прыгаем в самый конец (результат правого операнда остается на стеке)
+                size_t skipTrueAddr = emit.getCurrentOffset();
+                emit.emitU2(GOTO, 0);
+
+                // 5. Метка True: сюда попадаем только если левый был 1
+                size_t trueTarget = emit.getCurrentOffset();
+                emit.patchU2(jumpToTrueAddr + 1, (uint16_t)(trueTarget - jumpToTrueAddr));
+                emit.iconst(1);
+
+                size_t endTarget = emit.getCurrentOffset();
+                emit.patchU2(skipTrueAddr + 1, (uint16_t)(endTarget - skipTrueAddr));
                 return;
             }
 
