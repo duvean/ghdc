@@ -329,7 +329,18 @@ void CodeGenerator::generateExpr(ExprNode *node) {
                 if      (node->op == "+") emit.emit(Opcode::IADD);
                 else if (node->op == "-") emit.emit(Opcode::ISUB);
                 else if (node->op == "*") emit.emit(Opcode::IMUL);
-                else if (node->op == "/") emit.emit(Opcode::IDIV);
+                else if (node->op == "/") {                    
+                    // 1. Конвертируем второй операнд (он сверху) в Float
+                    emit.emit(Opcode::I2F); 
+                    // 2. Временно сохраняем его или меняем местами, чтобы конвертировать первый
+                    emit.emit(Opcode::SWAP); 
+                    // 3. Конвертируем первый операнд в Float
+                    emit.emit(Opcode::I2F);
+                    // 4. Снова меняем местами, чтобы порядок был [val1_float, val2_float]
+                    emit.emit(Opcode::SWAP);
+                    // 5. Выполняем дробное деление
+                    emit.emit(Opcode::FDIV);
+                }
             }
             break;
         }

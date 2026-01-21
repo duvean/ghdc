@@ -469,16 +469,17 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
             bool leftIsFloat = (lType->kind == TypeKind::PRIMITIVE && lType->base == BaseType::FLOAT);
             bool rightIsFloat = (rType->kind == TypeKind::PRIMITIVE && rType->base == BaseType::FLOAT);
 
-            if (leftIsFloat || rightIsFloat) {
+            if (node->op == "/" || leftIsFloat || rightIsFloat) {
                 node->inferredType = SemanticType::Float();
 
+                // Если операнды Int, превращаем их в Float через каст
                 if (lType->base == BaseType::INT) {
                     node->left = createCastNode(node->left, SemanticType::Float());
-                    std::cout << "[Semantic] Auto-cast LEFT to Float\n";
+                    std::cout << "[Semantic] Cast LEFT to Float\n";
                 }
                 if (rType->base == BaseType::INT) {
                     node->right = createCastNode(node->right, SemanticType::Float());
-                    std::cout << "[Semantic] Auto-cast RIGHT to Float\n";
+                    std::cout << "[Semantic] Cast RIGHT to Float\n";
                 }
             }
             else {
