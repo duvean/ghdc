@@ -402,6 +402,9 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
             std::string descriptor = "()" + sig.returnType->getDescriptor();
             node->constPoolIndex = constPool.addMethodRef("HaskellRuntime", node->name, descriptor);
         }
+        else {
+            throw std::runtime_error("Undefined identifier '" + node->name + "'");
+        }
         break;
     }
 
