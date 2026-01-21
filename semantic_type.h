@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <iostream>
 
 enum class TypeKind { PRIMITIVE, LIST, FUNCTION, CONSTRUCTOR, UNKNOWN };
 enum class BaseType { INT, FLOAT, BOOL, STRING, VOID, IO };
@@ -20,16 +21,17 @@ public:
     SemanticType(TypeKind k) : kind(k), base(BaseType::VOID), subType(nullptr), returnType(nullptr) {}
     SemanticType(TypeKind k, SemanticType* sub) : kind(k), base(BaseType::VOID), subType(sub) {}
     SemanticType() : kind(TypeKind::UNKNOWN), base(BaseType::VOID), subType(nullptr) {}
-    SemanticType(std::vector<SemanticType*> params, SemanticType* ret) 
-        : kind(TypeKind::FUNCTION), base(BaseType::VOID), 
-          subType(nullptr), paramTypes(params), returnType(ret) {}
+    SemanticType(std::vector<SemanticType*> params, SemanticType* ret)
+        : kind(TypeKind::FUNCTION), base(BaseType::VOID),
+        subType(nullptr), paramTypes(params), returnType(ret) {
+    }
 
-    static SemanticType* Int    ()  { return new SemanticType(BaseType::INT); }
-    static SemanticType* Float  ()  { return new SemanticType(BaseType::FLOAT); }
-    static SemanticType* Bool   ()  { return new SemanticType(BaseType::BOOL); }
-    static SemanticType* String ()  { return new SemanticType(BaseType::STRING); }
-    static SemanticType* Void   ()  { return new SemanticType(BaseType::VOID); }
-    static SemanticType* Unknown()  { return new SemanticType(); }
+    static SemanticType* Int() { return new SemanticType(BaseType::INT); }
+    static SemanticType* Float() { return new SemanticType(BaseType::FLOAT); }
+    static SemanticType* Bool() { return new SemanticType(BaseType::BOOL); }
+    static SemanticType* String() { return new SemanticType(BaseType::STRING); }
+    static SemanticType* Void() { return new SemanticType(BaseType::VOID); }
+    static SemanticType* Unknown() { return new SemanticType(); }
     static SemanticType* List(SemanticType* inner) {
         return new SemanticType(TypeKind::LIST, inner);
     }
@@ -38,48 +40,48 @@ public:
     }
     static SemanticType* Enum(const std::string& name) {
         SemanticType* t = new SemanticType(TypeKind::CONSTRUCTOR);
-        t->typeName = name; 
+        t->typeName = name;
         return t;
     }
     static SemanticType* IO() {
         SemanticType* t = new SemanticType(TypeKind::CONSTRUCTOR);
-        t->typeName = "IO"; 
+        t->typeName = "IO";
         return t;
     }
-    
+
     bool equals(SemanticType* other) {
         if (!other || kind != other->kind) return false;
 
         switch (kind) {
-            case TypeKind::PRIMITIVE:
-                return base == other->base;
-            case TypeKind::LIST:
-                if (!subType || !other->subType) return subType == other->subType;
-                return subType->equals(other->subType);
-            case TypeKind::FUNCTION:
-                if (paramTypes.size() != other->paramTypes.size()) return false;
-                for (size_t i = 0; i < paramTypes.size(); ++i) {
-                    if (!paramTypes[i]->equals(other->paramTypes[i])) return false;
-                }
-                return returnType->equals(other->returnType);
-            case TypeKind::CONSTRUCTOR:
-                return typeName == other->typeName;
-            case TypeKind::UNKNOWN:
-                // UNKNOWN не равен даже другому UNKNOWN для безопасности
-                return false;
-            default:
-                return true;
+        case TypeKind::PRIMITIVE:
+            return base == other->base;
+        case TypeKind::LIST:
+            if (!subType || !other->subType) return subType == other->subType;
+            return subType->equals(other->subType);
+        case TypeKind::FUNCTION:
+            if (paramTypes.size() != other->paramTypes.size()) return false;
+            for (size_t i = 0; i < paramTypes.size(); ++i) {
+                if (!paramTypes[i]->equals(other->paramTypes[i])) return false;
+            }
+            return returnType->equals(other->returnType);
+        case TypeKind::CONSTRUCTOR:
+            return typeName == other->typeName;
+        case TypeKind::UNKNOWN:
+            // UNKNOWN не равен даже другому UNKNOWN для безопасности
+            return false;
+        default:
+            return true;
         }
     }
 
     std::string getDescriptor() {
         if (kind == TypeKind::PRIMITIVE) {
             switch (base) {
-                case BaseType::INT:    return "I";
-                case BaseType::BOOL:   return "Z";
-                case BaseType::FLOAT:  return "F";
-                case BaseType::STRING: return "Ljava/lang/String;";
-                default:               return "V";
+            case BaseType::INT:    return "I";
+            case BaseType::BOOL:   return "Z";
+            case BaseType::FLOAT:  return "F";
+            case BaseType::STRING: return "Ljava/lang/String;";
+            default:               return "V";
             }
         }
         if (kind == TypeKind::LIST) return "[" + subType->getDescriptor();
@@ -99,22 +101,64 @@ public:
 
     std::string toString() {
         if (kind == TypeKind::UNKNOWN) return "?";
+
         if (kind == TypeKind::PRIMITIVE) {
-            if (base == BaseType::INT) return "Int";
-            if (base == BaseType::BOOL) return "Bool";
-            if (base == BaseType::FLOAT) return "Float";
+            switch (base) {
+            case BaseType::INT:   return "Int";
+            case BaseType::BOOL:  return "Bool";
+            case BaseType::FLOAT: return "Float";
+            case BaseType::IO:    return "IO";
+            case BaseType::VOID:  return "Void";
+            default:              return "Primitive";
+            }
         }
-        if (kind == TypeKind::LIST) return "[" + subType->toString() + "]";
-        if (kind == TypeKind::CONSTRUCTOR) return typeName;
+
+        if (kind == TypeKind::LIST) {
+            return "[" + (subType ? subType->toString() : "?") + "]";
+        }
+
+        if (kind == TypeKind::CONSTRUCTOR) {
+            // Если это Enum (Color) или Монада, возвращаем имя
+            return typeName.empty() ? "Constructor" : typeName;
+        }
 
         if (kind == TypeKind::FUNCTION) {
             std::string res = "(";
             for (size_t i = 0; i < paramTypes.size(); ++i) {
-                res += paramTypes[i]->toString() + (i == paramTypes.size() - 1 ? "" : ", ");
+                res += paramTypes[i]->toString() + (i == paramTypes.size() - 1 ? "" : " -> ");
             }
-            res += ") -> " + returnType->toString();
+            res += ") -> " + (returnType ? returnType->toString() : "?");
             return res;
         }
-        return getDescriptor();
+        return "UNKNOWN";
+    }
+
+    static bool isCompatible(SemanticType* expected, SemanticType* actual) {
+        if (!expected || !actual) return false;
+
+        // Временный лог для отладки
+        std::cout << "[Check] Expected: " << expected->toString()
+            << " | Actual: " << actual->toString() << std::endl;
+
+        if (expected->kind == TypeKind::UNKNOWN || actual->kind == TypeKind::UNKNOWN) return true;
+
+        // Проверка Enum и псевдомонад
+        if (expected->kind == TypeKind::CONSTRUCTOR) {
+            return actual->kind == TypeKind::CONSTRUCTOR && expected->typeName == actual->typeName;
+        }
+
+        if (expected->kind != actual->kind) return false;
+
+        if (expected->kind == TypeKind::PRIMITIVE) {
+            // Разрешаем Int -> Float автокаст
+            if (expected->base == BaseType::FLOAT && actual->base == BaseType::INT) return true;
+            return expected->base == actual->base;
+        }
+
+        if (expected->kind == TypeKind::LIST) {
+            return isCompatible(expected->subType, actual->subType);
+        }
+
+        return true;
     }
 };

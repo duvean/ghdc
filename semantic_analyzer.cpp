@@ -65,7 +65,7 @@ void SemanticAnalyzer::analyzeProgram(ProgramNode* root) {
     // Генерация байткода
     for (auto& method : currentClass->methods) {
         if (method.name == "<init>") continue; // Конструктор пишем вручную или отдельно
-        
+
         CodeGenerator gen(constPool, method.bytecode);
         gen.generate(method);
     }
@@ -90,12 +90,12 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
             analyzeExpr(node->expr);
 
             // 1. Берем текущий свободный индекс
-            int index = nextLocalIndex++; 
+            int index = nextLocalIndex++;
             SemanticType* type = node->expr->inferredType;
 
             // 2. ОБЯЗАТЕЛЬНО сохраняем индекс в сам узел декларации
             // Чтобы CodeGenerator знал, куда делать ISTORE/ASTORE
-            node->localVarIndex = index; 
+            node->localVarIndex = index;
             node->inferredType = type;
 
             // 3. Регистрируем в таблице символов для последующих вызовов
@@ -103,11 +103,11 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
             symbolTable[node->name] = LocalVariable(type, index);
 
             std::cout << "[Semantic] Declared var '" << node->name
-                    << "' index=" << index
-                    << " type=" << (type ? type->getDescriptor() : "?") << "\n";
+                << "' index=" << index
+                << " type=" << (type ? type->getDescriptor() : "?") << "\n";
         }
     }
-    
+
     // 2. Обработка заголовков функций
     else if (node->type == DECL_FUNC_SIGN) {
         std::vector<SemanticType*> allTypes;
@@ -120,8 +120,14 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
             sig.paramTypes = allTypes;        // Все остальные - аргументы
             functionSignatures[node->name] = sig;
 
-            std::cout << "[Semantic] Registered signature for '" << node->name 
-                    << "' (" << sig.paramTypes.size() << " params)\n";
+            std::cout << "[DEBUG-SIG] Function " << node->name << " registered with params: ";
+            for (auto* p : sig.paramTypes) {
+                std::cout << (p ? p->toString() : "NULL") << " ";
+            }
+            std::cout << std::endl;
+
+            std::cout << "[Semantic] Registered signature for '" << node->name
+                << "' (" << sig.paramTypes.size() << " params)\n";
         }
     }
 
@@ -140,18 +146,18 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
         // Обработка main
         if (node->name == "main") {
             internalName = "haskellMain";
-            descriptor = "()V"; 
-            
+            descriptor = "()V";
+
             // Создаем MethodRef для Haskell-кода
             // Это позволит JVM найти этот метод внутри этого же класса (#3)
             int haskellMainRef = constPool.addMethodRef("HaskellProgram", internalName, descriptor);
-            
+
             std::cout << "[JvmGen] MethodRef for haskellMain created at index: " << haskellMainRef << "\n";
         }
 
         // 2. Создаем JVM метод
         JvmMethod method(internalName, descriptor, node);
-        
+
         // Регистрируем имя и дескриптор в Constant Pool
         method.nameIdx = constPool.addUtf8(internalName);
         method.descIdx = constPool.addUtf8(descriptor);
@@ -161,7 +167,8 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
         for (auto it = symbolTable.begin(); it != symbolTable.end(); ) {
             if (!it->second.isEnum) { // Если это обычная переменная из прошлой функции
                 it = symbolTable.erase(it);
-            } else {
+            }
+            else {
                 ++it;
             }
         }
@@ -185,7 +192,7 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
         // 5. Анализ тела функции
         if (node->expr) {
             // Пробрасываем ожидаемый тип возврата в выражение тела
-            analyzeExpr(node->expr, sig.returnType); 
+            analyzeExpr(node->expr, sig.returnType);
 
             // Теперь этот костыль ниже не обязателен, 
             // так как EXPR_ARRAY уже сам всё подхватит,
@@ -202,22 +209,23 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
             // it->second — объект LocalVariable
             method.locals.push_back(it->second);
         }
-        
+
         if (currentClass) {
             auto it = std::find_if(currentClass->methods.begin(), currentClass->methods.end(),
-            [&](const JvmMethod& m) { return m.name == internalName; });
+                [&](const JvmMethod& m) { return m.name == internalName; });
 
             if (it != currentClass->methods.end()) {
                 it->bodies.push_back(node); // Добавляем еще одно уравнение к существующему методу
-            } else {
+            }
+            else {
                 currentClass->methods.emplace_back(internalName, descriptor, node);
             }
         }
         else {
             std::cerr << "[Critical Error] currentClass is NULL while analyzing " << internalName << "\n";
         }
-        std::cout << "[JvmGen] Method '" << internalName << "' processed. Locals count: " 
-                << method.locals.size() << "\n";
+        std::cout << "[JvmGen] Method '" << internalName << "' processed. Locals count: "
+            << method.locals.size() << "\n";
     }
 
     // 4. Обработка Let-блоков
@@ -250,9 +258,9 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
             // 4. Регистрируем в таблице символов
             symbolTable[node->name] = LocalVariable(type, index);
 
-            std::cout << "[Semantic] Bind var '" << node->name 
-                      << "' <- ... index=" << index 
-                      << " type=" << type->getDescriptor() << "\n";
+            std::cout << "[Semantic] Bind var '" << node->name
+                << "' <- ... index=" << index
+                << " type=" << type->getDescriptor() << "\n";
         }
     }
 
@@ -269,7 +277,7 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
         std::cout << "[DEBUG] Inside DATA_DECL for: " << node->name << std::endl;
         // Создаем тип на основе имени узла
         SemanticType* enumType = SemanticType::Enum(node->name);
-        
+
         // enumData - это дочерний список конструкторов
         if (node->enumData) {
             auto* constrList = static_cast<DeclListNode*>(node->enumData);
@@ -283,7 +291,7 @@ void SemanticAnalyzer::analyzeDecl(DeclNode* node) {
 
                 // Добавляем в таблицу
                 symbolTable[constr->name] = LocalVariable::EnumConst(enumType, currentVal);
-                
+
                 // Сохраняем индекс в CP для генератора
                 constr->constPoolIndex = constPool.addInteger(currentVal);
                 std::cout << "[Semantic] Registered Enum: " << constr->name << " = " << currentVal << std::endl;
@@ -308,7 +316,7 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
         // 1. ПЕРВООЧЕРЕДНАЯ ПРОВЕРКА: Если есть кавычки - это точно STRING
         if (node->value.front() == '"' && node->value.back() == '"') {
             node->inferredType = SemanticType::String();
-            
+
             // Убираем кавычки для Constant Pool
             std::string cleanValue = node->value.substr(1, node->value.size() - 2);
             node->constPoolIndex = constPool.addStringLiteral(cleanValue);
@@ -320,7 +328,7 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
             node->inferredType = SemanticType::Bool();
             // В байткоде Bool — это Int (0 или 1)
             int val = (node->value == "True" ? 1 : 0);
-            node->constPoolIndex = constPool.addInteger(val); 
+            node->constPoolIndex = constPool.addInteger(val);
             break;
         }
 
@@ -334,22 +342,24 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
                 if (s[i] == '.') {
                     if (hasDot) return false; // Две точки - это не число
                     hasDot = true;
-                } else if (!isdigit(s[i])) {
+                }
+                else if (!isdigit(s[i])) {
                     return false; // Любой другой символ (буква, пробел) делает это строкой
                 }
             }
             return true;
-        };
+            };
 
         if (isFullNumeric(node->value)) {
             if (node->value.find('.') != std::string::npos) {
                 node->inferredType = SemanticType::Float();
                 node->constPoolIndex = constPool.addFloat(std::stof(node->value));
-            } else {
+            }
+            else {
                 node->inferredType = SemanticType::Int();
                 node->constPoolIndex = constPool.addInteger(std::stoi(node->value));
             }
-        } 
+        }
         else {
             // 3. Если не в кавычках и не число (id или чертовщина от юзера)
             node->inferredType = SemanticType::String();
@@ -369,13 +379,14 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
                 node->inferredType = info.type;
                 node->value = std::to_string(info.enumValue);
                 node->isEnumConstant = true;
-                std::cout << "[Semantic] Resolved enum constant '" << node->name 
-                        << "' with value " << info.enumValue << "\n";
+                std::cout << "[Semantic] Resolved enum constant '" << node->name
+                    << "' with value " << info.enumValue << "\n";
                 return;
-            } else { // Обычная локальная переменная (аргумент функции или let binding)
+            }
+            else { // Обычная локальная переменная (аргумент функции или let binding)
                 node->localVarIndex = info.index;
             }
-        } 
+        }
         // 2. Проверка глобальных функций
         else if (functionSignatures.count(node->name)) {
             FunctionSignature& sig = functionSignatures[node->name];
@@ -406,8 +417,8 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
         // --- Логические операторы (&&, ||) ---
         if (node->op == "&&" || node->op == "||") {
             if (lType->base != BaseType::BOOL || rType->base != BaseType::BOOL) {
-                std::cerr << "[Semantic Error]: Logical ops require Bool, got " 
-                        << lType->typeName << " and " << rType->typeName << "\n";
+                std::cerr << "[Semantic Error]: Logical ops require Bool, got "
+                    << lType->typeName << " and " << rType->typeName << "\n";
             }
             node->inferredType = SemanticType::Bool();
         }
@@ -417,30 +428,33 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
             // Ожидаем: elem : [elem]
             if (rType->kind == TypeKind::LIST) {
                 // Тут можно добавить строгую проверку lType == rType->subType
-            } else {
+            }
+            else {
                 std::cerr << "[Semantic] Error: Right side of ':' must be a list\n";
             }
             // Результат - это тип правого операнда (список)
             node->inferredType = rType;
-            
+
             // Добавляем MethodRef в пул констант заранее
             std::string runtimeMethod = "cons";
             std::string descriptor;
-            
+
             if (lType->base == BaseType::INT) {
                 descriptor = "(I[I)[I";
-            } else if (lType->base == BaseType::FLOAT) {
+            }
+            else if (lType->base == BaseType::FLOAT) {
                 descriptor = "(F[F)[F";
-            } else {
+            }
+            else {
                 descriptor = "(Ljava/lang/String;[Ljava/lang/String;)[Ljava/lang/String;";
             }
             node->constPoolIndex = constPool.addMethodRef("HaskellRuntime", runtimeMethod, descriptor);
         }
 
         // --- Сравнения (расширенный список) ---
-        else if (node->op == "<=" || node->op == "==" || node->op == ">" || 
-                node->op == "<"  || node->op == "!=" || node->op == ">=") {
-            
+        else if (node->op == "<=" || node->op == "==" || node->op == ">" ||
+            node->op == "<" || node->op == "!=" || node->op == ">=") {
+
             node->inferredType = SemanticType::Bool();
 
             // Авто-каст для примитивов (Int -> Float)
@@ -459,8 +473,9 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
             // Left: [T], Right: Int, Result: T
             if (node->left->inferredType->kind == TypeKind::LIST) {
                 node->inferredType = node->left->inferredType->subType;
-            } else {
-                node->inferredType = SemanticType::Unknown(); 
+            }
+            else {
+                node->inferredType = SemanticType::Unknown();
             }
         }
         // --- Арифметика ---
@@ -505,11 +520,13 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
             for (size_t i = 1; i < node->block.size(); ++i) {
                 analyzeExpr(node->block[i], elemType); // Передаем тип первого элемента остальным
             }
-        } else {
+        }
+        else {
             if (expectedType && expectedType->kind == TypeKind::LIST) {
                 // Если массив пустой, берем тип элементов из ожидаемого типа [T]
                 elemType = expectedType->subType;
-            } else {
+            }
+            else {
                 // Если контекста нет, по умолчанию считаем Int
                 elemType = SemanticType::Int();
             }
@@ -556,7 +573,7 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
         std::string name = baseFuncNode->name;
         if (name.find(' ') != std::string::npos) name = name.substr(0, name.find(' '));
 
-        for (auto* arg : allArgs) analyzeExpr(arg); 
+        for (auto* arg : allArgs) analyzeExpr(arg);
 
         // 2. Ищем сигнатуру ДО анализа аргументов
         FunctionSignature sig;
@@ -564,24 +581,24 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
         bool isBuiltin = false;
 
         // Специальная логика для head/tail (динамическая сигнатура)
-        if  ((name == "head" 
-            || name == "tail" 
-            || name == "last" 
-            || name == "isNull") 
+        if ((name == "head"
+            || name == "tail"
+            || name == "last"
+            || name == "isNull")
             && !allArgs.empty()) {
             SemanticType* argType = allArgs[0]->inferredType;
-            
+
             // Работаем только если аргумент - список
             if (argType && argType->kind == TypeKind::LIST) {
                 sig.paramTypes = { argType };
-                
+
                 if (name == "head" || name == "last")
                     sig.returnType = argType->subType;
-                else if (name == "tail") 
+                else if (name == "tail")
                     sig.returnType = argType;
-                else if (name == "isNull") 
+                else if (name == "isNull")
                     sig.returnType = SemanticType::Bool(); // Динамически [T] -> Bool
-                    
+
                 foundSig = true;
                 isBuiltin = true;
                 baseFuncNode->inferredType = SemanticType::Function(sig.paramTypes, sig.returnType);
@@ -594,7 +611,7 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
             SemanticType* argType = allArgs[0]->inferredType;
             sig.paramTypes = { argType };
             sig.returnType = SemanticType::IO();
-            
+
             foundSig = true;
             isBuiltin = true;
 
@@ -606,7 +623,8 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
             sig = builtinSignatures[name];
             foundSig = true;
             isBuiltin = true;
-        } else if (functionSignatures.count(name)) {
+        }
+        else if (functionSignatures.count(name)) {
             sig = functionSignatures[name];
             foundSig = true;
             isBuiltin = false;
@@ -614,13 +632,29 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
 
         // 2. Если сигнатура определена (динамически или статически)
         if (foundSig) {
+            // Проверка на реальное количество аргументов
+            if (allArgs.size() != sig.paramTypes.size()) {
+                throw std::runtime_error("Semantic Error: Function '" + name + "' expects " +
+                    std::to_string(sig.paramTypes.size()) + " arguments, but got " +
+                    std::to_string(allArgs.size()));
+            }
+
             // 3. Анализируем аргументы, зная их ожидаемые типы
             for (size_t i = 0; i < allArgs.size(); ++i) {
-                SemanticType* expectedArgType = nullptr;
-                if (i < sig.paramTypes.size()) {
-                    expectedArgType = sig.paramTypes[i];
-                } 
-                analyzeExpr(allArgs[i], expectedArgType); // Передаем ожидаемый тип
+                SemanticType* expectedArgType = (i < sig.paramTypes.size()) ? sig.paramTypes[i] : nullptr;
+
+                // Анализируем конкретный аргумент
+                analyzeExpr(allArgs[i], expectedArgType);
+
+                // ОШИБКА БЫЛА ТУТ: сравниваем с expectedArgType, а не с внешним expectedType
+                if (!SemanticType::isCompatible(expectedArgType, allArgs[i]->inferredType)) {
+                    std::string expStr = expectedArgType ? expectedArgType->toString() : "Unknown";
+                    std::string actStr = allArgs[i]->inferredType ? allArgs[i]->inferredType->toString() : "null";
+
+                    throw std::runtime_error("Semantic Error: Type mismatch in function '" + name +
+                        "' at argument " + std::to_string(i + 1) + ". Expected '" +
+                        expStr + "', but got '" + actStr + "'");
+                }
             }
 
             // Типизация цепочки (чтобы не было ?)
@@ -637,7 +671,8 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
                     if (currentType->paramTypes.size() > 1) {
                         std::vector<SemanticType*> rem(currentType->paramTypes.begin() + 1, currentType->paramTypes.end());
                         currentType = SemanticType::Function(rem, currentType->returnType);
-                    } else {
+                    }
+                    else {
                         currentType = currentType->returnType;
                     }
                 }
@@ -646,7 +681,8 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
 
             baseFuncNode->inferredType = SemanticType::Function(sig.paramTypes, sig.returnType);
             baseFuncNode->isBuiltinFunciton = isBuiltin; // Чтобы генератор знал, какой класс писать
-        } else {
+        }
+        else {
             for (auto* arg : allArgs) analyzeExpr(arg);
         }
         break;
@@ -658,7 +694,7 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
                 analyzeDecl(d);
             }
         }
-        node->inferredType = SemanticType::IO(); 
+        node->inferredType = SemanticType::IO();
         break;
     }
 
@@ -667,18 +703,19 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
         // 1. Ищем конструктор в таблице
         if (symbolTable.count(node->name)) {
             auto& info = symbolTable[node->name];
-            
+
             if (info.isEnum) {
                 // 2. Устанавливаем тип
                 node->inferredType = info.type;
-                
+
                 // 3. Перезаписываем value реальным типом
-                node->value = std::to_string(info.enumValue); 
-                
-                std::cout << "[DEBUG-SEM] Patched " << node->name 
-                        << " with int value: " << node->value << std::endl;
+                node->value = std::to_string(info.enumValue);
+
+                std::cout << "[DEBUG-SEM] Patched " << node->name
+                    << " with int value: " << node->value << std::endl;
             }
-        } else {
+        }
+        else {
             std::cerr << "[Error] Unknown constructor: " << node->name << std::endl;
         }
         break;
@@ -698,9 +735,9 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
 
 void SemanticAnalyzer::analyzePattern(ExprNode* pattern, SemanticType* expectedType, int& nextSlot, int argIdx) {
     if (!pattern) return;
-    
+
     // Устанавливаем ожидаемый тип (Color)
-    pattern->inferredType = expectedType; 
+    pattern->inferredType = expectedType;
 
     // 1. Обычные переменные (x, y, a)
     if (pattern->type == EXPR_PATTERN_VAR) {
@@ -718,7 +755,7 @@ void SemanticAnalyzer::analyzePattern(ExprNode* pattern, SemanticType* expectedT
         // --- ОТЛАДКА ---
         std::cout << "[DEBUG-SEM] Looking for: '" << pattern->name << "'" << std::endl;
         std::cout << "[DEBUG-SEM] Current table keys: ";
-        for(auto const& pair : symbolTable) {
+        for (auto const& pair : symbolTable) {
             std::cout << "'" << pair.first << "' "; // pair.first это key
         }
         std::cout << std::endl;
@@ -729,14 +766,15 @@ void SemanticAnalyzer::analyzePattern(ExprNode* pattern, SemanticType* expectedT
             if (info.isEnum) {
                 // Уточняем тип (на случай если expectedType был общим)
                 pattern->inferredType = info.type;
-                
+
                 // Записываем строковое представление числа для генератора
                 pattern->value = std::to_string(info.enumValue);
 
-                std::cout << "[Semantic-Pattern] Patched enum pattern '" << pattern->name 
-                          << "' -> value " << pattern->value << std::endl;
+                std::cout << "[Semantic-Pattern] Patched enum pattern '" << pattern->name
+                    << "' -> value " << pattern->value << std::endl;
             }
-        } else {
+        }
+        else {
             std::cerr << "[Semantic Error] Unknown pattern constructor: " << pattern->name << std::endl;
         }
     }
@@ -755,29 +793,38 @@ void SemanticAnalyzer::collectTypes(ASTNode* node, std::vector<SemanticType*>& t
         collectTypes(expr->left, types);
         collectTypes(expr->right, types);
     }
+    else if (expr->type == EXPR_VAR) {
+        SemanticType* constr = new SemanticType(TypeKind::CONSTRUCTOR);
+        constr->typeName = expr->name;
+        types.push_back(constr);
+        return;
+    }
     else if (expr->type == EXPR_TYPE_PRIMITIVE) {
         if (expr->value == "Int") types.push_back(SemanticType::Int());
         else if (expr->value == "Float") types.push_back(SemanticType::Float());
         else if (expr->value == "Bool") types.push_back(SemanticType::Bool());
+        else if (expr->value == "String") types.push_back(SemanticType::String());
         else if (expr->value == "()" || expr->value == "Void") types.push_back(SemanticType::Void());
-        else types.push_back(SemanticType::Unknown());
-    }
-    // Обработка конструкторов (IO, Maybe и т.д.)
-    else if (expr->type == EXPR_TYPE_CONSTRUCTOR) {
-        if (expr->name == "IO") {
-            types.push_back(SemanticType::IO());
-        } else {
+        else {
             SemanticType* constr = new SemanticType(TypeKind::CONSTRUCTOR);
-            constr->typeName = expr->name;
+            constr->typeName = expr->value;
             types.push_back(constr);
         }
     }
+    // Обработка явных конструкторов (если парсер их так помечает)
+    else if (expr->type == EXPR_TYPE_CONSTRUCTOR) {
+        SemanticType* constr = new SemanticType(TypeKind::CONSTRUCTOR);
+        constr->typeName = expr->name;
+        types.push_back(constr);
+    }
     else if (expr->type == EXPR_TYPE_LIST) {
         std::vector<SemanticType*> inner;
-        collectTypes(expr->right ? expr->right : expr->left, inner); 
+        collectTypes(expr->right ? expr->right : expr->left, inner);
         if (!inner.empty()) {
             types.push_back(SemanticType::List(inner.back()));
-        } else {
+        }
+        else {
+            // Если список пустой [t], можно оставить Unknown или generic
             types.push_back(SemanticType::List(SemanticType::Unknown()));
         }
     }
@@ -803,33 +850,33 @@ void SemanticAnalyzer::initBuiltins() {
 
     SemanticType* anyA = SemanticType::Unknown();
     SemanticType* anyB = SemanticType::Unknown();
-    SemanticType* mapFuncArg = SemanticType::Function({anyA}, anyB);
+    SemanticType* mapFuncArg = SemanticType::Function({ anyA }, anyB);
     builtinSignatures["map"] = { { mapFuncArg, SemanticType::List(anyA) }, SemanticType::List(anyB) };
 
 
     // FOLD
 
     SemanticType* anyAcc = SemanticType::Unknown();
-    SemanticType* anyEl  = SemanticType::Unknown();
+    SemanticType* anyEl = SemanticType::Unknown();
 
     // Первый аргумент: (acc -> el -> acc)
-    SemanticType* foldFuncArg = SemanticType::Function({anyAcc, anyEl}, anyAcc);
-    
+    SemanticType* foldFuncArg = SemanticType::Function({ anyAcc, anyEl }, anyAcc);
+
     FunctionSignature foldSig;
     // Аргументы: функция, начальное значение (acc), список ([el])
     foldSig.paramTypes = { foldFuncArg, anyAcc, SemanticType::List(anyEl) };
     foldSig.returnType = anyAcc; // Результат — того же типа, что аккумулятор
-    
+
     builtinSignatures["fold"] = foldSig;
 
 
     // IO функции
     builtinSignatures["putStrLn"] = { {SemanticType::String()}, SemanticType::IO() };
-    builtinSignatures["print"] =    { {SemanticType::Unknown()}, SemanticType::IO() };
+    builtinSignatures["print"] = { {SemanticType::Unknown()}, SemanticType::IO() };
 
-    builtinSignatures["readInt"]      = { {}, SemanticType::Int() };
-    builtinSignatures["readFloat"]    = { {}, SemanticType::Float() };
-    builtinSignatures["readString"]   = { {}, SemanticType::String() };
+    builtinSignatures["readInt"] = { {}, SemanticType::Int() };
+    builtinSignatures["readFloat"] = { {}, SemanticType::Float() };
+    builtinSignatures["readString"] = { {}, SemanticType::String() };
     builtinSignatures["readArrayInt"] = { {}, SemanticType::List(SemanticType::Int()) };
     builtinSignatures["readArrayFloat"] = { {}, SemanticType::List(SemanticType::Float()) };
     builtinSignatures["readArrayString"] = { {}, SemanticType::List(SemanticType::String()) };
@@ -843,7 +890,8 @@ void SemanticAnalyzer::flattenCall(ExprNode* node, std::vector<ExprNode*>& args,
         for (auto* arg : node->arguments) {
             args.push_back(dynamic_cast<ExprNode*>(arg));
         }
-    } else {
+    }
+    else {
         // Мы дошли до самого корня — узла EXPR_VAR_REF (например, 'fold')
         *finalFunc = node;
     }
@@ -856,36 +904,36 @@ void SemanticAnalyzer::printDebugInfo() {
     std::cout << "\n============================================\n";
     std::cout << "           JVM CONSTANT POOL                \n";
     std::cout << "============================================\n";
-    
+
     const auto& entries = constPool.getEntries();
     for (size_t i = 1; i < entries.size(); ++i) { // Индексы с 1
         const auto& e = entries[i];
         std::cout << "#" << i << " = ";
-        
+
         switch (e.tag) {
-            case CONSTANT_Utf8: 
-                std::cout << "Utf8          \"" << e.stringValue << "\""; 
-                break;
-            case CONSTANT_Integer: 
-                std::cout << "Integer       " << e.intValue; 
-                break;
-            case CONSTANT_Float: 
-                std::cout << "Float         " << e.floatValue; 
-                break;
-            case CONSTANT_Class: 
-                std::cout << "Class         #" << e.refIndex1; 
-                break;
-            case CONSTANT_String: 
-                std::cout << "String        #" << e.refIndex1; 
-                break;
-            case CONSTANT_NameAndType: 
-                std::cout << "NameAndType   #" << e.refIndex1 << ":#" << e.refIndex2; 
-                break;
-            case CONSTANT_Methodref: 
-                std::cout << "MethodRef     #" << e.refIndex1 << ".#" << e.refIndex2; 
-                break;
-            default: 
-                std::cout << "Unknown Tag (" << (int)e.tag << ")";
+        case CONSTANT_Utf8:
+            std::cout << "Utf8          \"" << e.stringValue << "\"";
+            break;
+        case CONSTANT_Integer:
+            std::cout << "Integer       " << e.intValue;
+            break;
+        case CONSTANT_Float:
+            std::cout << "Float         " << e.floatValue;
+            break;
+        case CONSTANT_Class:
+            std::cout << "Class         #" << e.refIndex1;
+            break;
+        case CONSTANT_String:
+            std::cout << "String        #" << e.refIndex1;
+            break;
+        case CONSTANT_NameAndType:
+            std::cout << "NameAndType   #" << e.refIndex1 << ":#" << e.refIndex2;
+            break;
+        case CONSTANT_Methodref:
+            std::cout << "MethodRef     #" << e.refIndex1 << ".#" << e.refIndex2;
+            break;
+        default:
+            std::cout << "Unknown Tag (" << (int)e.tag << ")";
         }
         std::cout << "\n";
     }
@@ -906,8 +954,8 @@ void SemanticAnalyzer::printDebugInfo() {
                 // Для красивого вывода нужно найти имя переменной. 
                 // В SymbolTable мы хранили имя в ключе map, а LocalVariable хранит только индекс/тип.
                 // В реальном коде можно добавить std::string name в LocalVariable для отладки.
-                std::cout << "    Slot " << l.index << ": Type=" 
-                          << (l.type ? l.type->toString() : "?") << "\n";
+                std::cout << "    Slot " << l.index << ": Type="
+                    << (l.type ? l.type->toString() : "?") << "\n";
             }
             std::cout << "--------------------------------------------\n";
         }

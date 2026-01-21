@@ -35,6 +35,7 @@ private:
 
     void collectTypes(ASTNode* node, std::vector<SemanticType*>& types);
     void flattenCall(ExprNode* node, std::vector<ExprNode*>& args, ExprNode** finalFunc);
+    bool areTypesCompatible(SemanticType* expected, SemanticType* actual);
     
     ExprNode* createCastNode(ExprNode* target, SemanticType* toType);
 };

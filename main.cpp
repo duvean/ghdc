@@ -34,8 +34,18 @@ int main(int argc, char** argv) {
         ConstantPool constPool;
         SemanticAnalyzer analyzer(constPool);
         
-        analyzer.analyze(root);
-        analyzer.printDebugInfo();
+        try {
+            analyzer.analyze(root);
+            analyzer.printDebugInfo();
+        }
+        catch (const std::runtime_error& e) {
+            std::cerr << "[SEMANTIC ERROR]" << e.what() << std::endl;
+            return 1;
+        }
+        catch (const std::exception& e) {
+            std::cerr << "[UNKNOWN ERROR] " << e.what() << std::endl;
+            return 1;
+        }
 
         std::cout << "--- Semantic Analysis Done ---\n";
         // -------------------------------------
