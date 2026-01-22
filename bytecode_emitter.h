@@ -28,8 +28,9 @@ enum Opcode : uint8_t {
     IFEQ = 0x99, IFLT = 0x9B, IFGT = 0x9D, 
     IFLE = 0x9E, GOTO = 0xA7, IAND = 0x7E,
     IOR  = 0x80, IFNE = 0x9A, IFGE = 0x9C, 
-    INVOKESTATIC = 0xB8,      I2F  = 0x86,
-    ARRAYLENGTH  = 0xBE
+    INVOKESTATIC  = 0xB8,     I2F  = 0x86,
+    INVOKEVIRTUAL = 0xB6,
+    ARRAYLENGTH   = 0xBE
 };
 
 class BytecodeEmitter {

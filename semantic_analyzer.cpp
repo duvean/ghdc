@@ -609,6 +609,41 @@ void SemanticAnalyzer::analyzeExpr(ExprNode* node, SemanticType* expectedType) {
             }
         }
 
+        // Сигнатура для map
+        else if (name == "map" && allArgs.size() == 2) {
+            SemanticType* funcType = allArgs[0]->inferredType;
+            // Проверяем, является ли первый аргумент функцией
+            if (funcType && funcType->kind == TypeKind::FUNCTION) {
+                // map :: (a -> b) -> [a] -> [b]
+                // Результат map — это список возвращаемых значений функции
+                SemanticType* resultElemType = funcType->returnType;
+                baseFuncNode->inferredType = SemanticType::List(resultElemType);
+                
+                // Фиксируем сигнатуру, чтобы пройти проверки ниже
+                sig.paramTypes = { funcType, SemanticType::List(SemanticType::Unknown()) }; 
+                sig.returnType = baseFuncNode->inferredType;
+                foundSig = true;
+                isBuiltin = true;
+            }
+        }
+
+        // Сигнатура для fold
+        else if (name == "fold" && allArgs.size() == 3) {
+            SemanticType* funcType = allArgs[0]->inferredType;
+            SemanticType* accType = allArgs[1]->inferredType;
+            
+            if (funcType && funcType->kind == TypeKind::FUNCTION) {
+                // fold :: (acc -> el -> acc) -> acc -> [el] -> acc
+                // Результат fold — это тип аккумулятора
+                baseFuncNode->inferredType = accType;
+
+                sig.paramTypes = { funcType, accType, SemanticType::List(SemanticType::Unknown()) };
+                sig.returnType = accType;
+                foundSig = true;
+                isBuiltin = true;
+            }
+        }
+
         // Сигнатура для полиморфного print
         else if (name == "print" && !allArgs.empty()) {
             SemanticType* argType = allArgs[0]->inferredType;

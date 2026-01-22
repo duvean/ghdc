@@ -70,15 +70,39 @@ void CodeGenerator::generateExpr(ExprNode *node) {
         case NodeType::EXPR_FUNC_CALL: {
             if (node->flattenedArgs.empty()) return; 
 
-            // 1. Генерируем код для всех аргументов
-            for (auto* arg : node->flattenedArgs) generateExpr(arg);
-
-            // 2. Находим базу функции
+            // 1. Находим базу функции
             ExprNode* baseFunc = node;
             while (baseFunc->function) baseFunc = baseFunc->function;
-
             std::string name = baseFunc->name;
             if (name.find(' ') != std::string::npos) name = name.substr(0, name.find(' '));
+
+            bool isMap = (name == "map");
+            bool isFold = (name == "fold");
+
+            // === СПЕЦИАЛЬНАЯ ГЕНЕРАЦИЯ АРГУМЕНТОВ ДЛЯ MAP/FOLD ===
+            if (isMap || isFold) {
+                // Аргумент 0: Функция. Вместо generateExpr мы пушим имя класса и метода.
+                ExprNode* funcArg = node->flattenedArgs[0];
+                
+                // Предполагаем, что funcArg - это EXPR_VAR (имя функции)
+                // Имя класса пока хардкодим как HaskellProgram (или HaskellRuntime, если встроенная)
+                std::string targetClass = funcArg->isBuiltinFunciton ? "HaskellRuntime" : "HaskellProgram";
+                
+                // 1. PUSH Class Name
+                int classStrIdx = cp.addStringLiteral(targetClass);
+                emit.emitU2(LDC_W, (uint16_t)classStrIdx);
+
+                // 2. PUSH Method Name
+                int methodStrIdx = cp.addStringLiteral(funcArg->name);
+                emit.emitU2(LDC_W, (uint16_t)methodStrIdx);
+
+                // 3. Остальные аргументы генерируем штатно
+                for (size_t i = 1; i < node->flattenedArgs.size(); ++i) {
+                    generateExpr(node->flattenedArgs[i]);
+                }
+            } else { // Генерируем код для всех аргументов
+                for (auto* arg : node->flattenedArgs) generateExpr(arg);
+            }
 
             // Проверка вложенности массива
             auto isComplexArray = [](SemanticType* type) -> bool {
@@ -92,7 +116,24 @@ void CodeGenerator::generateExpr(ExprNode *node) {
             std::string targetClass = baseFunc->isBuiltinFunciton ? "HaskellRuntime" : "HaskellProgram";
 
             // Логика выбора дескриптора
-            if (baseFunc->isBuiltinFunciton && name != "print") {
+            if (isMap) {
+                // (ClassName, MethodName, List) -> List
+                descriptor = "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;";
+                needCheckCast = true; // Результат Object, нужно привести к реальному типу списка
+            }
+            else if (isFold) {
+                SemanticType* accType = node->flattenedArgs[1]->inferredType;
+                
+                if (accType->base == BaseType::FLOAT) {
+                    // Дескриптор с 'F' для аккумулятора
+                    descriptor = "(Ljava/lang/String;Ljava/lang/String;FLjava/lang/Object;)Ljava/lang/Object;";
+                } else {
+                    // Дескриптор с 'I' для аккумулятора
+                    descriptor = "(Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ljava/lang/Object;";
+                }
+                needCheckCast = true;
+            }
+            else if (baseFunc->isBuiltinFunciton && name != "print") {
                 SemanticType* firstArgType = node->flattenedArgs[0]->inferredType;
 
                 if (name == "head" || name == "last" || name == "tail" || name == "get") {
@@ -133,17 +174,27 @@ void CodeGenerator::generateExpr(ExprNode *node) {
 
             // 5. Генерируем CHECKCAST
             if (needCheckCast) {
-                std::string resultDesc = node->inferredType->getDescriptor();
-
-                std::string castType = resultDesc;
-                if (castType.size() > 2 && castType.front() == 'L' && castType.back() == ';') {
-                    castType = castType.substr(1, castType.size() - 2);
+                if (node->inferredType->base == BaseType::INT) {
+                    int classIdx = cp.addClass("java/lang/Integer");
+                    emit.emitU2(CHECKCAST, (uint16_t)classIdx);
+                    int methodRef = cp.addMethodRef("java/lang/Integer", "intValue", "()I");
+                    emit.emitU2(INVOKEVIRTUAL, (uint16_t)methodRef);
+                } 
+                else if (node->inferredType->base == BaseType::FLOAT) {
+                    int classIdx = cp.addClass("java/lang/Float");
+                    emit.emitU2(CHECKCAST, (uint16_t)classIdx);
+                    int methodRef = cp.addMethodRef("java/lang/Float", "floatValue", "()F");
+                    emit.emitU2(INVOKEVIRTUAL, (uint16_t)methodRef);
+                } 
+                else { // Стандартная логика для массивов и других объектов
+                    std::string castType = node->inferredType->getDescriptor();
+                    if (castType.size() > 2 && castType.front() == 'L' && castType.back() == ';') {
+                        castType = castType.substr(1, castType.size() - 2);
+                    }
+                    int classIdx = cp.addClass(castType);
+                    emit.emitU2(CHECKCAST, (uint16_t)classIdx);
                 }
-
-                int classIdx = cp.addClass(castType);
-                emit.emitU2(0xC0, (uint16_t)classIdx); // Opcode: CHECKCAST
             }
-            
             break;
         }
 

@@ -3,8 +3,9 @@ import java.util.Arrays;
 import java.util.Locale;
 import java.util.Scanner;
 import java.util.ArrayList;
-import java.lang.reflect.Array;
 import java.util.regex.Pattern;
+import java.lang.reflect.Array;
+import java.lang.reflect.Method;
 
 public class HaskellRuntime {
     private static final Scanner scanner = new Scanner(System.in).useLocale(Locale.US);
@@ -80,14 +81,21 @@ public class HaskellRuntime {
     public static void print(int i)         { System.out.println(i); }
     public static void print(float f)       { System.out.println(f); }
     public static void print(String s)      { System.out.println(s); }
-    public static void print(Object o)      { System.out.println(o); }
     public static void print(boolean b)     { System.out.println(b); }
     public static void print(int[] arr)     { System.out.println(Arrays.toString(arr)); }
     public static void print(float[] arr)   { System.out.println(Arrays.toString(arr)); }
     public static void print(String[] arr)  { System.out.println(Arrays.toString(arr)); }
     public static void print(Object[] arr)  { System.out.println(Arrays.deepToString(arr)); }
     public static void print(boolean[] arr) { System.out.println(Arrays.toString(arr)); }
-    
+    public static void print(Object obj) {
+        if (obj instanceof Integer) {
+            System.out.println(((Integer)obj).intValue());
+        } else if (obj instanceof Float) {
+            System.out.println(((Float)obj).floatValue());
+        } else {
+            System.out.println(obj);
+        }
+    }
 
 
 
@@ -181,5 +189,68 @@ public class HaskellRuntime {
     // Взятие по индексу (!!)
     public static Object get(Object[] arr, int index) {
         return arr[index];
+    }
+
+
+
+    // === MAP ===
+    // Сигнатура для байткода: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;
+    public static Object map(String className, String methodName, Object list) throws Exception {
+        if (list == null) return null; // Или пустой массив
+
+        int length = Array.getLength(list);
+        if (length == 0) return list;
+
+        // 1. Находим метод
+        // Мы предполагаем, что метод принимает 1 аргумент. 
+        Method method = findMethod(className, methodName, 1);
+        
+        // 2. Узнаем тип возвращаемого значения метода, чтобы создать правильный массив результата
+        Class<?> returnType = method.getReturnType();
+        Object resultList = Array.newInstance(returnType, length);
+
+        // 3. Пробегаем и вызываем
+        for (int i = 0; i < length; i++) {
+            Object item = Array.get(list, i);
+            Object mapped = method.invoke(null, item);
+            Array.set(resultList, i, mapped);
+        }
+
+        return resultList;
+    }
+
+    // === FOLD (foldl) ===
+    // Сигнатура: (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+    public static Object fold(String className, String methodName, int acc, Object list) throws Exception {
+        Object currentAcc = acc; // Боксинг произойдет здесь автоматически в Java
+        int length = Array.getLength(list);
+        Method method = findMethod(className, methodName, 2);
+
+        for (int i = 0; i < length; i++) {
+            currentAcc = method.invoke(null, currentAcc, Array.get(list, i));
+        }
+        return currentAcc;
+    }
+
+    public static Object fold(String className, String methodName, float acc, Object list) throws Exception {
+        Object currentAcc = acc; 
+        int length = java.lang.reflect.Array.getLength(list);
+        java.lang.reflect.Method method = findMethod(className, methodName, 2);
+
+        for (int i = 0; i < length; i++) {
+            currentAcc = method.invoke(null, currentAcc, java.lang.reflect.Array.get(list, i));
+        }
+        return currentAcc;
+    }
+
+    // Хелпер для поиска метода (упрощенный, ищет первый публичный статик с таким именем)
+    private static Method findMethod(String className, String methodName, int paramCount) throws Exception {
+        Class<?> clazz = Class.forName(className);
+        for (Method m : clazz.getMethods()) {
+            if (m.getName().equals(methodName) && m.getParameterCount() == paramCount) {
+                return m;
+            }
+        }
+        throw new NoSuchMethodException(className + "." + methodName);
     }
 }
